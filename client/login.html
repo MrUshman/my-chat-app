@@ -9,13 +9,332 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    /* Dedicated Self-Contained Styles for Fail-Proof Guarantee */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body.login-page {
+      min-height: 100vh;
+      width: 100vw;
+      background: #0d081e;
+      background-image: radial-gradient(circle at 20% 20%, rgba(236, 72, 153, 0.25) 0%, transparent 40%),
+                        radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.25) 0%, transparent 40%),
+                        radial-gradient(circle at 50% 50%, rgba(15, 12, 27, 1) 0%, #0d081e 100%);
+      font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow-x: hidden;
+      padding: 20px;
+    }
+
+    /* Ambient Glow Orbs */
+    .bg-glow-orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.5;
+    }
+    .bg-glow-orb-1 { width: 350px; height: 350px; background: #ec4899; top: -100px; left: -100px; }
+    .bg-glow-orb-2 { width: 400px; height: 400px; background: #8b5cf6; bottom: -120px; right: -120px; }
+
+    /* Flying Butterflies & Floating Hearts Layer */
+    .butterfly-container {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    .butterfly {
+      position: absolute;
+      font-size: 26px;
+      filter: drop-shadow(0 0 12px rgba(236, 72, 153, 0.9));
+      opacity: 0.85;
+    }
+
+    .b1 { top: 15%; left: -10%; animation: butterflyFlutter1 18s ease-in-out infinite; }
+    .b2 { top: 40%; left: -10%; animation: butterflyFlutter2 22s ease-in-out infinite 3s; }
+    .b3 { top: 70%; left: -10%; animation: butterflyFlutter3 16s ease-in-out infinite 6s; }
+    .b4 { top: 25%; right: -10%; animation: butterflyFlutter4 20s ease-in-out infinite 2s; }
+    .b5 { top: 60%; right: -10%; animation: butterflyFlutter5 24s ease-in-out infinite 5s; }
+
+    @keyframes butterflyFlutter1 {
+      0% { transform: translate(0, 0) rotate(15deg) scale(0.8); }
+      25% { transform: translate(35vw, -40px) rotate(-10deg) scale(1.1); }
+      50% { transform: translate(65vw, 60px) rotate(20deg) scale(0.9); }
+      75% { transform: translate(85vw, -30px) rotate(-15deg) scale(1.05); }
+      100% { transform: translate(115vw, 20px) rotate(10deg) scale(0.8); }
+    }
+
+    @keyframes butterflyFlutter2 {
+      0% { transform: translate(0, 0) rotate(-10deg) scale(0.9); }
+      30% { transform: translate(40vw, 80px) rotate(25deg) scale(1.15); }
+      60% { transform: translate(70vw, -50px) rotate(-15deg) scale(0.85); }
+      100% { transform: translate(115vw, 40px) rotate(10deg) scale(1); }
+    }
+
+    @keyframes butterflyFlutter3 {
+      0% { transform: translate(0, 0) rotate(5deg) scale(0.7); }
+      50% { transform: translate(50vw, -90px) rotate(-20deg) scale(1.2); }
+      100% { transform: translate(115vw, -20px) rotate(15deg) scale(0.8); }
+    }
+
+    @keyframes butterflyFlutter4 {
+      0% { transform: translate(0, 0) rotate(10deg) scale(0.95); }
+      50% { transform: translate(-55vw, 70px) rotate(-25deg) scale(1.1); }
+      100% { transform: translate(-115vw, -30px) rotate(15deg) scale(0.85); }
+    }
+
+    @keyframes butterflyFlutter5 {
+      0% { transform: translate(0, 0) rotate(-15deg) scale(1); }
+      50% { transform: translate(-60vw, -80px) rotate(20deg) scale(0.8); }
+      100% { transform: translate(-115vw, 50px) rotate(-10deg) scale(1.15); }
+    }
+
+    .floating-heart {
+      position: absolute;
+      font-size: 20px;
+      opacity: 0;
+      animation: floatUp 8s ease-in infinite;
+    }
+
+    .h1 { left: 12%; animation-delay: 0s; }
+    .h2 { left: 32%; animation-delay: 2.5s; }
+    .h3 { left: 55%; animation-delay: 5s; }
+    .h4 { left: 75%; animation-delay: 1.5s; }
+    .h5 { left: 88%; animation-delay: 4s; }
+
+    @keyframes floatUp {
+      0% { bottom: -20px; opacity: 0; transform: scale(0.6) rotate(0deg); }
+      20% { opacity: 0.8; }
+      80% { opacity: 0.6; }
+      100% { bottom: 105vh; opacity: 0; transform: scale(1.2) rotate(25deg); }
+    }
+
+    /* Glassmorphic Auth Card */
+    .login-card {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 410px;
+      background: rgba(22, 18, 40, 0.88);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 28px;
+      padding: 32px 28px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+      animation: cardAppear 0.4s ease;
+    }
+
+    @keyframes cardAppear {
+      from { opacity: 0; transform: translateY(20px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .login-heart-badge {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 14px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #ec4899, #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      box-shadow: 0 8px 24px rgba(236, 72, 153, 0.5);
+    }
+
+    .login-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 4px;
+      letter-spacing: -0.5px;
+    }
+
+    .login-subtitle {
+      font-size: 13.5px;
+      color: rgba(255, 255, 255, 0.65);
+    }
+
+    /* Auth Tabs */
+    .auth-tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 4px;
+      margin-bottom: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .auth-tab-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .auth-tab-btn.active {
+      background: linear-gradient(135deg, #8b5cf6, #ec4899);
+      color: #ffffff;
+      box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+    }
+
+    /* Forms & Inputs */
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 6px;
+    }
+
+    .input-with-icon {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 14px;
+      width: 18px;
+      height: 18px;
+      color: rgba(255, 255, 255, 0.45);
+      pointer-events: none;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 16px 12px 42px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      color: #ffffff;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .form-input:focus {
+      border-color: #8b5cf6;
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 0 14px rgba(139, 92, 246, 0.4);
+    }
+
+    .form-input::placeholder {
+      color: rgba(255, 255, 255, 0.35);
+    }
+
+    .toggle-password-btn {
+      position: absolute;
+      right: 12px;
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.45);
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .toggle-password-btn:hover {
+      color: #ffffff;
+    }
+
+    .toggle-password-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #ec4899, #8b5cf6);
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(236, 72, 153, 0.4);
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-login:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(236, 72, 153, 0.6);
+    }
+
+    .btn-login:active {
+      transform: translateY(0);
+    }
+
+    .login-error {
+      margin-top: 14px;
+      padding: 10px 14px;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      border-radius: 12px;
+      color: #f87171;
+      font-size: 13px;
+      text-align: center;
+      display: none;
+    }
+
+    .login-error.visible {
+      display: block;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body class="login-page">
 
-  <!-- Floating Ambient Glowing Orbs -->
+  <!-- Ambient background glow elements -->
   <div class="bg-glow-orb bg-glow-orb-1"></div>
   <div class="bg-glow-orb bg-glow-orb-2"></div>
-  <div class="bg-glow-orb bg-glow-orb-3"></div>
 
   <!-- Flying Butterflies & Floating Hearts Layer -->
   <div class="butterfly-container" aria-hidden="true">
@@ -33,10 +352,7 @@
 
   <div class="login-card" role="main">
     <header class="login-header">
-      <div class="login-heart-wrapper">
-        <span class="login-heart" aria-hidden="true">❤️</span>
-        <div class="heart-pulse-ring"></div>
-      </div>
+      <div class="login-heart-badge">❤️</div>
       <h1 class="login-title">Private Chat Space</h1>
       <p class="login-subtitle">Connect, share & chat securely</p>
     </header>
