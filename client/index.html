@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Private chat — our little corner of the internet" />
+  <title>Chat ❤️</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="chat-page">
+
+  <!-- ─── MAIN CHAT CARD ─────────────────────────────────────────── -->
+  <div class="chat-card" id="chatCard">
+
+    <!-- Header -->
+    <header class="chat-header" id="chatHeader">
+      <div class="header-left">
+        <!-- Partner avatar -->
+        <div class="header-avatar-container">
+          <div id="partnerAvatar" class="header-avatar-placeholder" aria-hidden="true">❤️</div>
+          <div class="header-status-ring"></div>
+        </div>
+
+        <div class="header-info">
+          <div class="header-name-row">
+            <div class="header-name" id="partnerName">...</div>
+          </div>
+          <div class="header-status">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-text" id="statusText">Connecting...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="searchToggleBtn" class="btn-header-search" title="Search Chat" aria-label="Search Chat">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span>Search Chat</span>
+        </button>
+        <button id="settingsBtn" class="btn-settings" title="Settings" aria-label="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="2.2"></circle>
+            <circle cx="12" cy="12" r="2.2"></circle>
+            <circle cx="12" cy="19" r="2.2"></circle>
+          </svg>
+        </button>
+
+        <!-- Settings Dropdown Menu -->
+        <div id="settingsDropdown" class="settings-dropdown" role="menu" style="display:none;">
+          <button id="profileMenuBtn" class="dropdown-item" role="menuitem">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span>My Profile</span>
+          </button>
+          <button id="themeMenuBtn" class="dropdown-item" role="menuitem">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 2a7 7 0 1 0 10 10"></path>
+            </svg>
+            <span>Themes & Wallpapers 🎨</span>
+          </button>
+          <div class="dropdown-divider"></div>
+          <button id="logoutBtn" class="dropdown-item logout-item" role="menuitem">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span>Logout</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- In-Chat Search Bar -->
+    <div id="chatSearchBar" class="chat-search-bar" style="display:none;">
+      <svg class="search-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="chatSearchInput" placeholder="Search messages in chat..." autocomplete="off" aria-label="Search messages" />
+      <span id="searchResultCount" class="search-result-count"></span>
+      <button type="button" id="closeSearchBtn" class="close-search-btn" aria-label="Close search">✕</button>
+    </div>
+
+    <!-- Connection Banner -->
+    <div id="connectionBanner" class="connection-banner" role="status" aria-live="polite">
+      <span id="connectionBannerIcon"></span>
+      <span id="connectionBannerText"></span>
+    </div>
+
+    <!-- Messages Container -->
+    <main class="chat-messages" id="chatMessages">
+      <button id="loadMoreBtn" class="load-more-btn" style="display:none;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+        <span>Load older messages</span>
+      </button>
+
+      <div class="empty-chat" id="emptyChat" style="display:none;">
+        <div class="empty-chat-icon-wrapper">
+          <span class="empty-chat-icon">💌</span>
+          <div class="empty-chat-glow"></div>
+        </div>
+        <h3 class="empty-chat-title">Our Private Space</h3>
+        <p class="empty-chat-text">This is our little corner of the internet ❤️<br>Send a message, photo, or voice note to begin.</p>
+      </div>
+    </main>
+
+    <!-- Typing Indicator -->
+    <div class="typing-indicator" id="typingIndicator" aria-live="polite">
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <span id="typingText"></span>
+    </div>
+
+    <!-- Input Area -->
+    <footer class="chat-input-area" id="chatInputArea">
+      <!-- Voice recorder active state -->
+      <div class="voice-recorder" id="voiceRecorder">
+        <div class="recording-live-badge">
+          <div class="recording-dot"></div>
+          <span class="recording-duration" id="recordingDuration">0:00</span>
+        </div>
+        <div class="recording-waveform">
+          <span class="wave-bar"></span>
+          <span class="wave-bar"></span>
+          <span class="wave-bar"></span>
+          <span class="wave-bar"></span>
+          <span class="wave-bar"></span>
+        </div>
+        <span class="recording-label">Recording voice note...</span>
+        <div class="recording-actions">
+          <button class="recording-cancel" id="recordingCancel" type="button">Cancel</button>
+          <button class="recording-stop" id="recordingStop" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            Done
+          </button>
+        </div>
+      </div>
+
+      <!-- Voice preview -->
+      <div class="voice-preview" id="voicePreview">
+        <div class="voice-preview-badge">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+        </div>
+        <span id="voicePreviewDuration" class="voice-preview-time">0:00</span>
+        <div class="voice-preview-controls">
+          <button class="voice-preview-play" id="voicePreviewPlay" type="button">▶ Play</button>
+          <button class="voice-preview-cancel" id="voicePreviewCancel" type="button">Cancel</button>
+          <button class="voice-preview-send" id="voicePreviewSend" type="button">Send 🎙️</button>
+        </div>
+      </div>
+
+      <!-- Photo preview -->
+      <div class="photo-preview-container" id="photoPreviewContainer">
+        <div class="photo-preview-wrapper">
+          <img id="photoPreviewImg" class="photo-preview-img" src="" alt="Photo preview" />
+        </div>
+        <div class="photo-preview-actions">
+          <button class="photo-cancel" id="photoCancel" type="button">Cancel</button>
+          <button class="photo-send" id="photoSend" type="button">Send Photo ❤️</button>
+        </div>
+      </div>
+
+      <!-- Quoted Reply Bar -->
+      <div id="replyPreviewBar" class="reply-preview-bar" style="display:none;">
+        <div class="reply-preview-border"></div>
+        <div class="reply-preview-content">
+          <span class="reply-preview-title" id="replyPreviewTitle">Replying to Partner</span>
+          <span class="reply-preview-text" id="replyPreviewText">Message text preview...</span>
+        </div>
+        <button type="button" id="cancelReplyBtn" class="reply-preview-close" aria-label="Cancel reply">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <!-- Main input row -->
+      <div class="input-row">
+        <button id="emojiBtn" class="input-btn emoji-btn-trigger" type="button" title="Emoji" aria-label="Open emoji picker">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+            <line x1="9" y1="9" x2="9.01" y2="9"></line>
+            <line x1="15" y1="9" x2="15.01" y2="9"></line>
+          </svg>
+        </button>
+
+        <button id="photoBtn" class="input-btn" type="button" title="Send photo" aria-label="Attach photo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+        </button>
+        <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" style="display:none;" aria-hidden="true" />
+
+        <div class="message-input-wrapper">
+          <textarea id="messageInput" placeholder="Type a message..." rows="1" autocomplete="off" spellcheck="true" aria-label="Message input"></textarea>
+        </div>
+
+        <button id="micBtn" class="input-btn mic-btn" type="button" title="Voice message" aria-label="Record voice message">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </button>
+
+        <button id="sendBtn" class="btn-send" type="button" title="Send message" aria-label="Send message" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+          </svg>
+        </button>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Emoji Picker -->
+  <div id="emojiPicker" class="emoji-picker" role="dialog" aria-label="Emoji picker">
+    <div class="emoji-picker-header">
+      <div class="emoji-picker-tabs" id="emojiTabs"></div>
+    </div>
+    <div class="emoji-search">
+      <input type="text" id="emojiSearch" placeholder="Search emojis..." autocomplete="off" aria-label="Search emojis" />
+    </div>
+    <div class="emoji-grid" id="emojiGrid"></div>
+  </div>
+
+  <!-- Image Viewer Modal -->
+  <div class="modal-overlay image-modal-overlay" id="imageModal" role="dialog" aria-modal="true" aria-label="Image viewer" style="display:none;">
+    <div class="image-modal-topbar">
+      <button class="image-modal-btn image-modal-back" id="imageModalClose" type="button" aria-label="Go Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        <span>← Back</span>
+      </button>
+      <button class="image-modal-btn image-modal-download" id="imageModalDownload" type="button" aria-label="Download photo">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <span>Download</span>
+      </button>
+    </div>
+    <div class="image-modal-body">
+      <img id="imageModalImg" src="" alt="Full size photo" />
+    </div>
+  </div>
+
+  <!-- Profile Modal -->
+  <div class="modal-overlay" id="profileModal" role="dialog" aria-modal="true" aria-label="My Profile" style="display:none;">
+    <div class="profile-modal-card">
+      <div class="profile-modal-header">
+        <h2 class="profile-modal-title">My Profile</h2>
+        <button type="button" class="profile-modal-close" id="profileModalClose" aria-label="Close profile">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <form id="profileForm" novalidate>
+        <div class="profile-avatar-section">
+          <div class="profile-avatar-container">
+            <div id="profileAvatarDisplay" class="profile-avatar-placeholder">U</div>
+            <button type="button" id="avatarUploadBtn" class="avatar-upload-badge" title="Change Profile Picture" aria-label="Change Profile Picture">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            </button>
+          </div>
+          <input type="file" id="avatarFileInput" accept="image/jpeg,image/png,image/webp" style="display:none;" />
+          <span class="avatar-hint">Tap camera to change photo</span>
+        </div>
+
+        <div class="profile-form-group">
+          <label class="profile-form-label" for="profileDisplayNameInput">Display Name</label>
+          <input type="text" id="profileDisplayNameInput" class="profile-form-input" placeholder="Enter your name" required />
+        </div>
+
+        <div class="profile-form-group">
+          <label class="profile-form-label" for="profileUsernameInput">Username</label>
+          <input type="text" id="profileUsernameInput" class="profile-form-input profile-disabled-input" readonly disabled />
+        </div>
+
+        <div class="profile-modal-actions">
+          <button type="button" class="btn-profile-cancel" id="profileCancelBtn">Cancel</button>
+          <button type="submit" class="btn-profile-save" id="saveProfileBtn">
+            <span id="saveProfileBtnText">Save Changes</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Theme & Animation Customizer Modal -->
+  <div class="modal-overlay" id="themeModal" role="dialog" aria-modal="true" aria-label="Themes and Animations" style="display:none;">
+    <div class="profile-modal-card theme-modal-card">
+      <div class="profile-modal-header">
+        <h2 class="profile-modal-title">🎨 Themes & Animations</h2>
+        <button type="button" class="profile-modal-close" id="themeModalClose" aria-label="Close themes">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="theme-section">
+        <h4 class="theme-section-title">Color Palette (8 Pyare Themes)</h4>
+        <div class="theme-color-grid">
+          <div class="theme-color-card active" data-theme="purple" style="background: linear-gradient(135deg, #7c3aed, #c026d3);">
+            <span>💜 Cyberpunk</span>
+          </div>
+          <div class="theme-color-card" data-theme="rose" style="background: linear-gradient(135deg, #ec4899, #f43f5e);">
+            <span>🌸 Romantic Rose</span>
+          </div>
+          <div class="theme-color-card" data-theme="ocean" style="background: linear-gradient(135deg, #0284c7, #06b6d4);">
+            <span>🌌 Midnight Ocean</span>
+          </div>
+          <div class="theme-color-card" data-theme="emerald" style="background: linear-gradient(135deg, #059669, #10b981);">
+            <span>🌿 Emerald Forest</span>
+          </div>
+          <div class="theme-color-card" data-theme="sunset" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">
+            <span>🌆 Sunset Amber</span>
+          </div>
+          <div class="theme-color-card" data-theme="candy" style="background: linear-gradient(135deg, #38bdf8, #f472b6);">
+            <span>🍬 Cotton Candy</span>
+          </div>
+          <div class="theme-color-card" data-theme="amoled" style="background: linear-gradient(135deg, #111827, #e11d48);">
+            <span>🖤 AMOLED Onyx</span>
+          </div>
+          <div class="theme-color-card" data-theme="lavender" style="background: linear-gradient(135deg, #a855f7, #6366f1);">
+            <span>🔮 Twilight Lavender</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="theme-section" style="margin-top: 18px;">
+        <h4 class="theme-section-title">Background Motion Wallpaper (7 Wallpapers)</h4>
+        <div class="theme-motion-grid">
+          <div class="theme-motion-card active" data-motion="floating-hearts">
+            <span class="motion-icon">💖</span>
+            <span>Floating Hearts</span>
+          </div>
+          <div class="theme-motion-card" data-motion="aurora">
+            <span class="motion-icon">🌌</span>
+            <span>Aurora Waves</span>
+          </div>
+          <div class="theme-motion-card" data-motion="starry">
+            <span class="motion-icon">✨</span>
+            <span>Starry Galaxy</span>
+          </div>
+          <div class="theme-motion-card" data-motion="sakura">
+            <span class="motion-icon">🌸</span>
+            <span>Sakura Petals</span>
+          </div>
+          <div class="theme-motion-card" data-motion="matrix">
+            <span class="motion-icon">⚡</span>
+            <span>Neon Grid</span>
+          </div>
+          <div class="theme-motion-card" data-motion="bubbles">
+            <span class="motion-icon">🫧</span>
+            <span>Bubble Bloom</span>
+          </div>
+          <div class="theme-motion-card" data-motion="minimal">
+            <span class="motion-icon">🍃</span>
+            <span>Minimal Glass</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-modal-actions" style="margin-top: 20px;">
+        <button type="button" class="btn-profile-save" id="applyThemeBtn" style="width: 100%;">
+          <span>Apply Theme & Wallpapers 🎨</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Message Modal -->
+  <div class="modal-overlay" id="deleteMessageModal" role="dialog" aria-modal="true" aria-label="Delete message" style="display:none;">
+    <div class="delete-modal-card">
+      <h3 class="delete-modal-title">Delete Message?</h3>
+      <p class="delete-modal-subtitle">Choose an option to delete this message.</p>
+      <div class="delete-modal-options">
+        <button type="button" class="btn-delete-option btn-delete-everyone" id="deleteForEveryoneBtn">
+          <span>🗑️ Delete for Everyone</span>
+        </button>
+        <button type="button" class="btn-delete-option btn-delete-me" id="deleteForMeBtn">
+          <span>🗑️ Delete for Me</span>
+        </button>
+        <button type="button" class="btn-delete-cancel" id="deleteCancelBtn">
+          <span>Cancel</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desktop Right-Click Context Menu -->
+  <div id="msgContextMenu" class="msg-context-menu" style="display:none;" role="menu">
+    <button type="button" class="context-item" id="ctxReplyBtn">
+      <span>↩️ Reply</span>
+    </button>
+    <button type="button" class="context-item" id="ctxCopyBtn">
+      <span>📋 Copy Text</span>
+    </button>
+    <div class="dropdown-divider"></div>
+    <button type="button" class="context-item context-delete" id="ctxDeleteBtn">
+      <span>🗑️ Delete Message</span>
+    </button>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer" aria-live="assertive"></div>
+
+  <!-- Scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/emoji.js"></script>
+  <script src="/js/media.js"></script>
+  <script src="/js/socket.js"></script>
+  <script src="/js/chat.js"></script>
+</body>
+</html>
