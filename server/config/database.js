@@ -4,10 +4,10 @@ const mongoose = require('mongoose');
 
 // MongoDB connection with retry logic
 async function connectDatabase() {
-  const uri = process.env.MONGODB_URI;
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
 
   if (!uri) {
-    throw new Error('MONGODB_URI is not defined in environment variables');
+    throw new Error('MONGODB_URI (or MONGO_URI) is not defined in environment variables');
   }
 
   const options = {
