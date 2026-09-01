@@ -600,6 +600,20 @@ body.motion-bubbles::before {
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
 }
 
+.voice-recorder,
+.voice-preview,
+.photo-preview-container {
+  display: none;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.voice-recorder.active,
+.voice-preview.active,
+.photo-preview-container.active {
+  display: flex !important;
+}
+
 .input-row {
   display: flex;
   align-items: center;
