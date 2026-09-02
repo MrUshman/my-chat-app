@@ -77,6 +77,11 @@ const clientDir = path.join(__dirname, '../client');
 app.use(express.static(clientDir, {
   etag: false,
   lastModified: false,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  },
 }));
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
