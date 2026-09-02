@@ -777,11 +777,13 @@ function hideTyping() {
 // ─── Input Events ─────────────────────────────────────────────────
 
 function setupInputEvents() {
-  // Auto-resize textarea
-  messageInput.addEventListener('input', () => {
-    UI.autoResize(messageInput);
-    updateSendButton();
-    handleTyping();
+  // Auto-resize textarea & immediate send button toggle across all input/key events
+  ['input', 'keyup', 'change', 'paste', 'cut', 'focus'].forEach(evt => {
+    messageInput.addEventListener(evt, () => {
+      UI.autoResize(messageInput);
+      updateSendButton();
+      handleTyping();
+    });
   });
 
   // Send on Enter (Shift+Enter = new line)
@@ -792,7 +794,15 @@ function setupInputEvents() {
     }
   });
 
-  sendBtn.addEventListener('click', sendMessage);
+  // Send button click & touch handlers
+  sendBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    sendMessage();
+  });
+  sendBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    sendMessage();
+  });
 
   logoutBtn.addEventListener('click', logout);
 
@@ -1011,9 +1021,21 @@ function closeProfileModal() {
 }
 
 function updateSendButton() {
-  const hasText = messageInput.value.trim().length > 0;
-  sendBtn.disabled = !hasText;
-  sendBtn.classList.toggle('has-content', hasText);
+  const text = messageInput ? messageInput.value : '';
+  const hasText = text.trim().length > 0;
+  
+  if (sendBtn) {
+    sendBtn.disabled = !hasText;
+    sendBtn.classList.toggle('has-content', hasText);
+    sendBtn.style.setProperty('display', hasText ? 'flex' : 'none', 'important');
+    sendBtn.style.setProperty('visibility', hasText ? 'visible' : 'hidden', 'important');
+  }
+
+  const micBtn = document.getElementById('micBtn');
+  if (micBtn) {
+    micBtn.style.setProperty('display', hasText ? 'none' : 'flex', 'important');
+  }
+
   const inputRow = document.querySelector('.input-row');
   if (inputRow) {
     inputRow.classList.toggle('has-text', hasText);
