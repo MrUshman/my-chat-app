@@ -997,6 +997,21 @@ body.keyboard-open .chat-input-area {
   align-self: flex-start;
 }
 
+/* Suppress any legacy reaction picker bar and badges */
+.reaction-picker-bar,
+.message-reactions-badge,
+.reaction-emoji-btn,
+.reaction-pill {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 .message-bubble {
   padding: 10px 14px;
   position: relative;

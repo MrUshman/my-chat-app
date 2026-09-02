@@ -8,9 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.2" />
-  <link rel="preload" href="/css/style.css?v=2.2" as="style" />
-  <link rel="preload" href="/js/chat.js?v=2.2" as="script" />
+  <link rel="stylesheet" href="/css/style.css?v=3.0" />
+  <link rel="preload" href="/css/style.css?v=3.0" as="style" />
+  <link rel="preload" href="/js/chat.js?v=3.0" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
     /* Dedicated Self-Contained Mobile App Layout Guarantee */
@@ -528,6 +528,21 @@
       box-shadow: 0 0 12px rgba(139, 92, 246, 0.5) !important;
       color: #ffffff !important;
     }
+
+    /* Guarantee message reactions bar and badges are completely suppressed */
+    .reaction-picker-bar,
+    .message-reactions-badge,
+    .reaction-emoji-btn,
+    .reaction-pill {
+      display: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+      height: 0 !important;
+      width: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
   </style>
 </head>
 <body class="chat-page">
@@ -971,10 +986,10 @@
 
   <!-- Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=2.2"></script>
-  <script src="/js/emoji.js?v=2.2"></script>
-  <script src="/js/media.js?v=2.2"></script>
-  <script src="/js/socket.js?v=2.2"></script>
-  <script src="/js/chat.js?v=2.2"></script>
+  <script src="/js/ui.js?v=3.0"></script>
+  <script src="/js/emoji.js?v=3.0"></script>
+  <script src="/js/media.js?v=3.0"></script>
+  <script src="/js/socket.js?v=3.0"></script>
+  <script src="/js/chat.js?v=3.0"></script>
 </body>
 </html>
