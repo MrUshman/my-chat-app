@@ -107,6 +107,7 @@ async function init() {
   // Setup UI listeners immediately so interaction is instant
   setupInputEvents();
   setupSettingsAndProfile();
+  setupThemeCustomizer();
   setupDeleteModalListeners();
   setupReplyListeners();
   setupInChatSearch();
@@ -804,6 +805,20 @@ function setupInputEvents() {
     sendMessage();
   });
 
+  // Mobile Keyboard gap & viewport adjustment
+  messageInput.addEventListener('focus', () => {
+    document.body.classList.add('keyboard-open');
+    const inputArea = document.getElementById('chatInputArea');
+    if (inputArea) inputArea.classList.add('keyboard-open');
+    setTimeout(() => scrollToBottom(false), 200);
+  });
+
+  messageInput.addEventListener('blur', () => {
+    document.body.classList.remove('keyboard-open');
+    const inputArea = document.getElementById('chatInputArea');
+    if (inputArea) inputArea.classList.remove('keyboard-open');
+  });
+
   logoutBtn.addEventListener('click', logout);
 
   loadMoreBtn.addEventListener('click', () => {
@@ -1302,21 +1317,25 @@ function setupThemeCustomizer() {
     if (e.target === themeModal) closeThemeModal();
   });
 
-  // Color selection cards
+  // Color selection cards with LIVE PREVIEW
   const colorCards = themeModal.querySelectorAll('.theme-color-card');
   colorCards.forEach(card => {
     card.addEventListener('click', () => {
       colorCards.forEach(c => c.classList.remove('active'));
       card.classList.add('active');
+      const activeMotionCard = themeModal.querySelector('.theme-motion-card.active');
+      applyThemeAndMotion(card.dataset.theme, activeMotionCard?.dataset.motion || 'floating-hearts');
     });
   });
 
-  // Motion selection cards
+  // Motion selection cards with LIVE PREVIEW
   const motionCards = themeModal.querySelectorAll('.theme-motion-card');
   motionCards.forEach(card => {
     card.addEventListener('click', () => {
       motionCards.forEach(c => c.classList.remove('active'));
       card.classList.add('active');
+      const activeColorCard = themeModal.querySelector('.theme-color-card.active');
+      applyThemeAndMotion(activeColorCard?.dataset.theme || 'purple', card.dataset.motion);
     });
   });
 
@@ -1337,7 +1356,7 @@ function setupThemeCustomizer() {
       window.ChatSocket.emitThemeUpdate(selectedTheme, selectedMotion);
     }
 
-    UI.showToast('Theme & Wallpaper updated for all users! 🎨', 'success');
+    UI.showToast('Theme & Wallpaper applied! 🎨', 'success');
     closeThemeModal();
   });
 }
@@ -1370,19 +1389,23 @@ function openThemeModal() {
 function closeThemeModal() {
   const themeModal = document.getElementById('themeModal');
   if (themeModal) themeModal.style.display = 'none';
+
+  // Restore saved theme if user didn't hit Apply
+  const savedTheme = localStorage.getItem('chat_theme') || 'purple';
+  const savedMotion = localStorage.getItem('chat_motion') || 'floating-hearts';
+  applyThemeAndMotion(savedTheme, savedMotion);
 }
 
 function applyThemeAndMotion(themeName, motionName) {
-  document.body.classList.remove(
-    'theme-purple', 'theme-rose', 'theme-ocean', 'theme-emerald',
-    'theme-sunset', 'theme-candy', 'theme-amoled', 'theme-lavender'
-  );
-  document.body.classList.remove(
-    'motion-floating-hearts', 'motion-aurora', 'motion-starry',
-    'motion-sakura', 'motion-matrix', 'motion-bubbles', 'motion-minimal'
-  );
+  const toRemove = [];
+  document.body.classList.forEach(cls => {
+    if (cls.startsWith('theme-') || cls.startsWith('motion-')) {
+      toRemove.push(cls);
+    }
+  });
+  toRemove.forEach(cls => document.body.classList.remove(cls));
 
-  if (themeName && themeName !== 'purple') {
+  if (themeName) {
     document.body.classList.add(`theme-${themeName}`);
   }
   if (motionName) {

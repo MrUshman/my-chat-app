@@ -684,11 +684,18 @@ body.motion-bubbles::before {
   backdrop-filter: blur(20px) !important;
   -webkit-backdrop-filter: blur(20px) !important;
   border-top: 1px solid var(--border) !important;
-  padding: 10px 12px !important;
-  padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  padding: 8px 12px !important;
+  padding-bottom: max(10px, calc(8px + env(safe-area-inset-bottom))) !important;
   z-index: 100 !important;
   position: relative !important;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+  transition: padding-bottom 0.15s ease !important;
+}
+
+.chat-input-area:focus-within,
+.chat-input-area.keyboard-open,
+body.keyboard-open .chat-input-area {
+  padding-bottom: 15px !important;
 }
 
 .voice-recorder,
@@ -2383,4 +2390,316 @@ body.menu-open .reaction-picker-bar:hover {
   20% { opacity: 0.8; }
   80% { opacity: 0.6; }
   100% { bottom: 105vh; opacity: 0; transform: scale(1.2) rotate(25deg); }
+}
+
+/* ================================================================
+   THEMES & WALLPAPERS CUSTOMIZER UI & ENGINE
+   ================================================================ */
+
+.theme-modal-card {
+  max-width: 480px;
+  width: 92%;
+  max-height: 85vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.theme-section {
+  margin-top: 14px;
+}
+
+.theme-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.theme-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.theme-color-card {
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  border: 2px solid transparent;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.theme-color-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.theme-color-card.active {
+  border-color: #ffffff !important;
+  transform: scale(1.03);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.6) !important;
+}
+
+.theme-motion-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.theme-motion-card {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.theme-motion-card .motion-icon {
+  font-size: 20px;
+}
+
+.theme-motion-card:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.theme-motion-card.active {
+  background: rgba(139, 92, 246, 0.25) !important;
+  border-color: #8b5cf6 !important;
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.5) !important;
+  color: #ffffff !important;
+  transform: scale(1.04);
+}
+
+/* ================================================================
+   DYNAMIC THEME COLORS & MESSAGE BUBBLES
+   ================================================================ */
+
+/* Cyberpunk Purple (Default) */
+body.theme-purple {
+  --accent-gradient-start: #8b5cf6;
+  --accent-gradient-end: #ec4899;
+  --bubble-me: linear-gradient(135deg, #7c3aed, #c026d3);
+  --bubble-them: rgba(255, 255, 255, 0.09);
+  --chat-bg: #0a0914;
+}
+
+/* WhatsApp Dark */
+body.theme-whatsapp {
+  --accent-gradient-start: #00a884;
+  --accent-gradient-end: #056162;
+  --bubble-me: linear-gradient(135deg, #005c4b, #075e54);
+  --bubble-them: #202c33;
+  --chat-bg: #0b141a;
+}
+body.theme-whatsapp .btn-send {
+  background: #00a884 !important;
+}
+
+/* Romantic Rose */
+body.theme-rose {
+  --accent-gradient-start: #f43f5e;
+  --accent-gradient-end: #ec4899;
+  --bubble-me: linear-gradient(135deg, #f43f5e, #ec4899);
+  --bubble-them: rgba(255, 255, 255, 0.09);
+  --chat-bg: #140810;
+}
+body.theme-rose .btn-send {
+  background: linear-gradient(135deg, #f43f5e, #ec4899) !important;
+}
+
+/* Midnight Ocean */
+body.theme-ocean {
+  --accent-gradient-start: #0284c7;
+  --accent-gradient-end: #06b6d4;
+  --bubble-me: linear-gradient(135deg, #0284c7, #06b6d4);
+  --bubble-them: rgba(255, 255, 255, 0.08);
+  --chat-bg: #040d1a;
+}
+body.theme-ocean .btn-send {
+  background: linear-gradient(135deg, #0284c7, #06b6d4) !important;
+}
+
+/* Emerald Forest */
+body.theme-emerald {
+  --accent-gradient-start: #059669;
+  --accent-gradient-end: #10b981;
+  --bubble-me: linear-gradient(135deg, #059669, #10b981);
+  --bubble-them: rgba(255, 255, 255, 0.08);
+  --chat-bg: #05140f;
+}
+body.theme-emerald .btn-send {
+  background: linear-gradient(135deg, #059669, #10b981) !important;
+}
+
+/* Royal Gold */
+body.theme-gold {
+  --accent-gradient-start: #f59e0b;
+  --accent-gradient-end: #d97706;
+  --bubble-me: linear-gradient(135deg, #d97706, #b45309);
+  --bubble-them: rgba(255, 255, 255, 0.08);
+  --chat-bg: #120e06;
+}
+body.theme-gold .btn-send {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+}
+
+/* Sunset Amber */
+body.theme-sunset {
+  --accent-gradient-start: #f59e0b;
+  --accent-gradient-end: #ef4444;
+  --bubble-me: linear-gradient(135deg, #f59e0b, #ef4444);
+  --bubble-them: rgba(255, 255, 255, 0.08);
+  --chat-bg: #170905;
+}
+body.theme-sunset .btn-send {
+  background: linear-gradient(135deg, #f59e0b, #ef4444) !important;
+}
+
+/* Cotton Candy */
+body.theme-candy {
+  --accent-gradient-start: #38bdf8;
+  --accent-gradient-end: #f472b6;
+  --bubble-me: linear-gradient(135deg, #38bdf8, #f472b6);
+  --bubble-them: rgba(255, 255, 255, 0.08);
+  --chat-bg: #0e0c18;
+}
+body.theme-candy .btn-send {
+  background: linear-gradient(135deg, #38bdf8, #f472b6) !important;
+}
+
+/* Twilight Lavender */
+body.theme-lavender {
+  --accent-gradient-start: #a855f7;
+  --accent-gradient-end: #6366f1;
+  --bubble-me: linear-gradient(135deg, #a855f7, #6366f1);
+  --bubble-them: rgba(255, 255, 255, 0.08);
+  --chat-bg: #0d0a1c;
+}
+body.theme-lavender .btn-send {
+  background: linear-gradient(135deg, #a855f7, #6366f1) !important;
+}
+
+/* AMOLED Onyx */
+body.theme-amoled {
+  --accent-gradient-start: #e11d48;
+  --accent-gradient-end: #9f1239;
+  --bubble-me: linear-gradient(135deg, #27272a, #18181b);
+  --bubble-them: #121215;
+  --chat-bg: #000000;
+}
+body.theme-amoled .message-wrapper.me .message-bubble {
+  border: 1px solid rgba(225, 29, 72, 0.5) !important;
+}
+
+/* Apply dynamic bubble colors to messages */
+.message-wrapper.me .message-bubble {
+  background: var(--bubble-me) !important;
+}
+.message-wrapper.them .message-bubble {
+  background: var(--bubble-them) !important;
+}
+.chat-card {
+  background-color: var(--chat-bg, #0a0914) !important;
+}
+
+/* ================================================================
+   DYNAMIC CHAT WALLPAPER PATTERNS
+   ================================================================ */
+
+/* Wallpaper 1: Romantic Floating Hearts */
+body.motion-floating-hearts .chat-messages {
+  background-color: var(--chat-bg, #0e0716) !important;
+  background-image: radial-gradient(rgba(236, 72, 153, 0.16) 1.5px, transparent 1.5px),
+                    radial-gradient(rgba(244, 63, 94, 0.12) 2px, transparent 2px) !important;
+  background-size: 28px 28px !important;
+  background-position: 0 0, 14px 14px !important;
+}
+
+/* Wallpaper 2: WhatsApp Classic Doodle Pattern */
+body.motion-whatsapp-doodle .chat-messages {
+  background-color: var(--chat-bg, #0b141a) !important;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1.5px, transparent 1.5px),
+                    radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px) !important;
+  background-size: 22px 22px !important;
+  background-position: 0 0, 11px 11px !important;
+}
+
+/* Wallpaper 3: Starry Galaxy */
+body.motion-starry .chat-messages {
+  background-color: #030308 !important;
+  background-image: radial-gradient(rgba(255,255,255,0.8) 1px, transparent 1px),
+                    radial-gradient(rgba(139, 92, 246, 0.5) 1.5px, transparent 2px),
+                    radial-gradient(rgba(255,255,255,0.4) 1px, transparent 1.5px) !important;
+  background-size: 60px 60px, 110px 110px, 35px 35px !important;
+  background-position: 0 0, 40px 60px, 15px 25px !important;
+}
+
+/* Wallpaper 4: Aurora Waves */
+body.motion-aurora .chat-messages {
+  background: linear-gradient(180deg, #070617 0%, #0d122b 50%, #0a1f26 100%) !important;
+  background-attachment: fixed !important;
+}
+
+/* Wallpaper 5: Sakura Blossom */
+body.motion-sakura .chat-messages {
+  background-color: #120914 !important;
+  background-image: radial-gradient(rgba(251, 113, 133, 0.2) 2px, transparent 2px),
+                    radial-gradient(rgba(244, 114, 182, 0.12) 1.5px, transparent 1.5px) !important;
+  background-size: 34px 34px !important;
+  background-position: 0 0, 17px 17px !important;
+}
+
+/* Wallpaper 6: Cyberpunk Neon Grid */
+body.motion-matrix .chat-messages {
+  background-color: #05050d !important;
+  background-image: linear-gradient(rgba(139, 92, 246, 0.09) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(139, 92, 246, 0.09) 1px, transparent 1px) !important;
+  background-size: 26px 26px !important;
+}
+
+/* Wallpaper 7: Royal Gold Damask */
+body.motion-gold .chat-messages {
+  background-color: #0f0b04 !important;
+  background-image: radial-gradient(rgba(217, 119, 6, 0.2) 1.5px, transparent 1.5px),
+                    radial-gradient(rgba(245, 158, 11, 0.12) 2px, transparent 2px) !important;
+  background-size: 28px 28px !important;
+  background-position: 0 0, 14px 14px !important;
+}
+
+/* Wallpaper 8: Emerald Rainforest */
+body.motion-emerald .chat-messages {
+  background-color: #04100b !important;
+  background-image: radial-gradient(rgba(16, 185, 129, 0.16) 1.5px, transparent 1.5px),
+                    radial-gradient(rgba(5, 150, 105, 0.12) 2px, transparent 2px) !important;
+  background-size: 30px 30px !important;
+  background-position: 0 0, 15px 15px !important;
+}
+
+/* Wallpaper 9: Minimal AMOLED Glass */
+body.motion-minimal .chat-messages {
+  background-color: #000000 !important;
+  background-image: none !important;
 }

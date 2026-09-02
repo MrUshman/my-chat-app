@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="description" content="Private chat — our little corner of the internet" />
   <title>Chat ❤️</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -276,7 +276,16 @@
       box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25) !important;
     }
 
-    /* WhatsApp Style Mobile Input Capsule & Action Button */
+    .chat-input-area {
+      padding-top: 8px !important;
+      padding-bottom: max(10px, calc(8px + env(safe-area-inset-bottom))) !important;
+      transition: padding-bottom 0.15s ease !important;
+    }
+    .chat-input-area:focus-within,
+    .chat-input-area.keyboard-open,
+    body.keyboard-open .chat-input-area {
+      padding-bottom: 15px !important;
+    }
     .input-row {
       display: flex;
       align-items: flex-end;
@@ -709,10 +718,13 @@
       </div>
 
       <div class="theme-section">
-        <h4 class="theme-section-title">Color Palette (8 Pyare Themes)</h4>
+        <h4 class="theme-section-title">Color Palette & Message Bubbles (10 Themes)</h4>
         <div class="theme-color-grid">
           <div class="theme-color-card active" data-theme="purple" style="background: linear-gradient(135deg, #7c3aed, #c026d3);">
             <span>💜 Cyberpunk</span>
+          </div>
+          <div class="theme-color-card" data-theme="whatsapp" style="background: linear-gradient(135deg, #00a884, #056162);">
+            <span>🟢 WhatsApp Dark</span>
           </div>
           <div class="theme-color-card" data-theme="rose" style="background: linear-gradient(135deg, #ec4899, #f43f5e);">
             <span>🌸 Romantic Rose</span>
@@ -723,35 +735,42 @@
           <div class="theme-color-card" data-theme="emerald" style="background: linear-gradient(135deg, #059669, #10b981);">
             <span>🌿 Emerald Forest</span>
           </div>
+          <div class="theme-color-card" data-theme="gold" style="background: linear-gradient(135deg, #f59e0b, #b45309);">
+            <span>👑 Royal Gold</span>
+          </div>
           <div class="theme-color-card" data-theme="sunset" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">
             <span>🌆 Sunset Amber</span>
           </div>
           <div class="theme-color-card" data-theme="candy" style="background: linear-gradient(135deg, #38bdf8, #f472b6);">
             <span>🍬 Cotton Candy</span>
           </div>
-          <div class="theme-color-card" data-theme="amoled" style="background: linear-gradient(135deg, #111827, #e11d48);">
-            <span>🖤 AMOLED Onyx</span>
-          </div>
           <div class="theme-color-card" data-theme="lavender" style="background: linear-gradient(135deg, #a855f7, #6366f1);">
             <span>🔮 Twilight Lavender</span>
+          </div>
+          <div class="theme-color-card" data-theme="amoled" style="background: linear-gradient(135deg, #18181b, #e11d48);">
+            <span>🖤 AMOLED Onyx</span>
           </div>
         </div>
       </div>
 
       <div class="theme-section" style="margin-top: 18px;">
-        <h4 class="theme-section-title">Background Motion Wallpaper (7 Wallpapers)</h4>
+        <h4 class="theme-section-title">Background Chat Wallpaper (9 Wallpapers)</h4>
         <div class="theme-motion-grid">
           <div class="theme-motion-card active" data-motion="floating-hearts">
             <span class="motion-icon">💖</span>
-            <span>Floating Hearts</span>
+            <span>Romantic Hearts</span>
           </div>
-          <div class="theme-motion-card" data-motion="aurora">
-            <span class="motion-icon">🌌</span>
-            <span>Aurora Waves</span>
+          <div class="theme-motion-card" data-motion="whatsapp-doodle">
+            <span class="motion-icon">💬</span>
+            <span>WhatsApp Doodle</span>
           </div>
           <div class="theme-motion-card" data-motion="starry">
             <span class="motion-icon">✨</span>
             <span>Starry Galaxy</span>
+          </div>
+          <div class="theme-motion-card" data-motion="aurora">
+            <span class="motion-icon">🌌</span>
+            <span>Aurora Waves</span>
           </div>
           <div class="theme-motion-card" data-motion="sakura">
             <span class="motion-icon">🌸</span>
@@ -759,15 +778,19 @@
           </div>
           <div class="theme-motion-card" data-motion="matrix">
             <span class="motion-icon">⚡</span>
-            <span>Neon Grid</span>
+            <span>Neon Cyber Grid</span>
           </div>
-          <div class="theme-motion-card" data-motion="bubbles">
-            <span class="motion-icon">🫧</span>
-            <span>Bubble Bloom</span>
+          <div class="theme-motion-card" data-motion="gold">
+            <span class="motion-icon">👑</span>
+            <span>Royal Damask</span>
+          </div>
+          <div class="theme-motion-card" data-motion="emerald">
+            <span class="motion-icon">🌿</span>
+            <span>Rainforest</span>
           </div>
           <div class="theme-motion-card" data-motion="minimal">
-            <span class="motion-icon">🍃</span>
-            <span>Minimal Glass</span>
+            <span class="motion-icon">🖤</span>
+            <span>AMOLED Pitch Black</span>
           </div>
         </div>
       </div>
