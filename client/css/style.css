@@ -842,7 +842,7 @@ body.keyboard-open .chat-input-area {
 }
 
 .input-row:not(.has-text) .btn-send {
-  display: none !important;
+  display: none;
 }
 
 .btn-send:disabled {
@@ -2393,26 +2393,75 @@ body.menu-open .reaction-picker-bar:hover {
 }
 
 /* ================================================================
-   THEMES & WALLPAPERS CUSTOMIZER UI & ENGINE
+   COMPACT & SCROLLABLE THEMES & WALLPAPERS MODAL
    ================================================================ */
 
 .theme-modal-card {
-  max-width: 480px;
-  width: 92%;
-  max-height: 85vh;
+  max-width: 440px !important;
+  width: 94% !important;
+  max-height: 82vh !important;
+  max-height: 82dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 22px !important;
+  background: rgba(22, 18, 38, 0.98) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.85) !important;
+}
+
+.theme-modal-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(26, 20, 46, 0.98);
+}
+
+.theme-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.theme-modal-scrollable-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.theme-modal-footer {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(26, 20, 46, 0.98);
+}
+
+.theme-modal-footer .btn-profile-save {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  border-radius: 14px;
 }
 
 .theme-section {
-  margin-top: 14px;
+  margin-top: 0;
 }
 
 .theme-section-title {
-  font-size: 13px;
+  font-size: 11.5px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -2420,77 +2469,74 @@ body.menu-open .reaction-picker-bar:hover {
 .theme-color-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
 .theme-color-card {
-  height: 48px;
-  border-radius: 12px;
+  height: 38px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 12px;
-  font-size: 13px;
+  padding: 0 8px;
+  font-size: 12px;
   font-weight: 600;
   color: #ffffff;
   cursor: pointer;
   border: 2px solid transparent;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: all 0.15s ease;
   user-select: none;
 }
 
 .theme-color-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
 }
 
 .theme-color-card.active {
   border-color: #ffffff !important;
-  transform: scale(1.03);
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.6) !important;
+  transform: scale(1.02);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.5) !important;
 }
 
 .theme-motion-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
 .theme-motion-card {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 12px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: 4px;
+  font-size: 10.5px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
   text-align: center;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.15s ease;
   user-select: none;
 }
 
 .theme-motion-card .motion-icon {
-  font-size: 20px;
+  font-size: 16px;
 }
 
 .theme-motion-card:hover {
   background: rgba(255, 255, 255, 0.12);
-  transform: translateY(-2px);
 }
 
 .theme-motion-card.active {
-  background: rgba(139, 92, 246, 0.25) !important;
+  background: rgba(139, 92, 246, 0.3) !important;
   border-color: #8b5cf6 !important;
-  box-shadow: 0 0 14px rgba(139, 92, 246, 0.5) !important;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.5) !important;
   color: #ffffff !important;
-  transform: scale(1.04);
 }
 
 /* ================================================================

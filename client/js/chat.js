@@ -778,8 +778,8 @@ function hideTyping() {
 // ─── Input Events ─────────────────────────────────────────────────
 
 function setupInputEvents() {
-  // Auto-resize textarea & immediate send button toggle across all input/key events
-  ['input', 'keyup', 'change', 'paste', 'cut', 'focus'].forEach(evt => {
+  // Auto-resize textarea & immediate send button toggle across all input/key/composition events
+  ['input', 'beforeinput', 'keyup', 'keydown', 'change', 'paste', 'cut', 'focus', 'compositionstart', 'compositionupdate', 'compositionend'].forEach(evt => {
     messageInput.addEventListener(evt, () => {
       UI.autoResize(messageInput);
       updateSendButton();
@@ -810,6 +810,7 @@ function setupInputEvents() {
     document.body.classList.add('keyboard-open');
     const inputArea = document.getElementById('chatInputArea');
     if (inputArea) inputArea.classList.add('keyboard-open');
+    updateSendButton();
     setTimeout(() => scrollToBottom(false), 200);
   });
 
@@ -817,7 +818,11 @@ function setupInputEvents() {
     document.body.classList.remove('keyboard-open');
     const inputArea = document.getElementById('chatInputArea');
     if (inputArea) inputArea.classList.remove('keyboard-open');
+    setTimeout(updateSendButton, 120);
   });
+
+  // Initialize send button state
+  updateSendButton();
 
   logoutBtn.addEventListener('click', logout);
 
@@ -1036,24 +1041,39 @@ function closeProfileModal() {
 }
 
 function updateSendButton() {
-  const text = messageInput ? messageInput.value : '';
-  const hasText = text.trim().length > 0;
-  
-  if (sendBtn) {
-    sendBtn.disabled = !hasText;
-    sendBtn.classList.toggle('has-content', hasText);
-    sendBtn.style.setProperty('display', hasText ? 'flex' : 'none', 'important');
-    sendBtn.style.setProperty('visibility', hasText ? 'visible' : 'hidden', 'important');
-  }
+  const text = (messageInput && messageInput.value) || '';
+  const hasContent = text.trim().length > 0;
 
   const micBtn = document.getElementById('micBtn');
-  if (micBtn) {
-    micBtn.style.setProperty('display', hasText ? 'none' : 'flex', 'important');
-  }
-
   const inputRow = document.querySelector('.input-row');
-  if (inputRow) {
-    inputRow.classList.toggle('has-text', hasText);
+
+  if (hasContent) {
+    // Typing active / has text -> SHOW SEND BUTTON, HIDE RECORD BUTTON
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.style.setProperty('display', 'flex', 'important');
+      sendBtn.style.setProperty('visibility', 'visible', 'important');
+      sendBtn.style.setProperty('opacity', '1', 'important');
+      sendBtn.classList.add('has-content');
+    }
+    if (micBtn) {
+      micBtn.style.setProperty('display', 'none', 'important');
+      micBtn.style.setProperty('visibility', 'hidden', 'important');
+    }
+    if (inputRow) inputRow.classList.add('has-text');
+  } else {
+    // No text / empty -> SHOW RECORD BUTTON, HIDE SEND BUTTON
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.style.setProperty('display', 'none', 'important');
+      sendBtn.style.setProperty('visibility', 'hidden', 'important');
+      sendBtn.classList.remove('has-content');
+    }
+    if (micBtn) {
+      micBtn.style.setProperty('display', 'flex', 'important');
+      micBtn.style.setProperty('visibility', 'visible', 'important');
+    }
+    if (inputRow) inputRow.classList.remove('has-text');
   }
 }
 
