@@ -463,17 +463,6 @@ function renderMessage(msg, position = 'append') {
     statusHtml = `<span class="message-status ${statusClass}" id="status-${msg._id}">${checkmarks}</span>`;
   }
 
-  const reactionsHtml = buildReactionsHtml(msg.reactions, currentUserIdStr);
-  const pickerBarHtml = !isMe ? `
-    <div class="reaction-picker-bar">
-      <button class="reaction-emoji-btn" data-emoji="❤️" type="button" title="React ❤️">❤️</button>
-      <button class="reaction-emoji-btn" data-emoji="😂" type="button" title="React 😂">😂</button>
-      <button class="reaction-emoji-btn" data-emoji="🔥" type="button" title="React 🔥">🔥</button>
-      <button class="reaction-emoji-btn" data-emoji="👍" type="button" title="React 👍">👍</button>
-      <button class="reaction-emoji-btn" data-emoji="😮" type="button" title="React 😮">😮</button>
-      <button class="reaction-emoji-btn" data-emoji="😢" type="button" title="React 😢">😢</button>
-    </div>` : '';
-
   // Build Quoted Reply Card if message was sent as a reply
   let quotedCardHtml = '';
   if (msg.replyTo) {
@@ -489,12 +478,8 @@ function renderMessage(msg, position = 'append') {
 
   wrapper.innerHTML = `
     <span class="reply-swipe-indicator">↩️</span>
-    ${pickerBarHtml}
     ${quotedCardHtml}
     ${bubbleContent}
-    <div id="reactions-${msg._id}">
-      ${reactionsHtml}
-    </div>
     <div class="message-meta">
       <span class="message-time">${UI.formatTime(msg.createdAt)}</span>
       ${statusHtml}
@@ -888,20 +873,8 @@ function setupSettingsAndProfile() {
     }
   });
 
-  // Event delegation for chat messages (photos & reactions)
+  // Event delegation for chat messages (photos & delete)
   chatMessages.addEventListener('click', (e) => {
-    // 1. Reaction emoji button click
-    const reactionBtn = e.target.closest('.reaction-emoji-btn');
-    if (reactionBtn) {
-      e.stopPropagation();
-      const emoji = reactionBtn.dataset.emoji || reactionBtn.textContent.trim();
-      const wrapper = reactionBtn.closest('.message-wrapper');
-      const messageId = wrapper?.dataset.messageId;
-      if (messageId && emoji) {
-        reactToMessage(messageId, emoji);
-      }
-      return;
-    }
 
     // 2. Photo click for full-screen viewer
     const imgMsg = e.target.closest('.image-message');
@@ -1253,59 +1226,9 @@ function seekAudio(event, mediaUrl, progressId, durationId) {
 window.toggleAudio = toggleAudio;
 window.seekAudio = seekAudio;
 
-// ─── Message Reactions Handlers ────────────────────────────────────
-
-function buildReactionsHtml(reactions = [], currentUserId = '') {
-  if (!reactions || reactions.length === 0) return '';
-
-  const grouped = {};
-  for (const r of reactions) {
-    if (!grouped[r.emoji]) {
-      grouped[r.emoji] = { count: 0, hasMine: false };
-    }
-    grouped[r.emoji].count++;
-    const uid = (r.userId?._id || r.userId)?.toString();
-    if (uid === currentUserId) {
-      grouped[r.emoji].hasMine = true;
-    }
-  }
-
-  let html = '<div class="message-reactions-badge">';
-  for (const [emoji, item] of Object.entries(grouped)) {
-    html += `<span class="reaction-pill ${item.hasMine ? 'my-reaction' : ''}">${emoji} ${item.count > 1 ? item.count : ''}</span>`;
-  }
-  html += '</div>';
-  return html;
-}
-
-async function reactToMessage(messageId, emoji) {
-  try {
-    const res = await fetch(`/api/messages/${messageId}/react`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ emoji }),
-    });
-
-    const data = await res.json();
-    if (res.ok && data.success) {
-      updateMessageReactions(messageId, data.reactions);
-      if (window.ChatSocket) {
-        window.ChatSocket.emitMessageReaction(data);
-      }
-    }
-  } catch (err) {
-    console.error('React error:', err);
-  }
-}
-
-function updateMessageReactions(messageId, reactions) {
-  const badgeContainer = document.getElementById(`reactions-${messageId}`);
-  if (badgeContainer) {
-    const currentUserIdStr = currentUser?._id?.toString();
-    badgeContainer.innerHTML = buildReactionsHtml(reactions, currentUserIdStr);
-  }
-}
+function buildReactionsHtml() { return ''; }
+function reactToMessage() {}
+function updateMessageReactions() {}
 
 window.reactToMessage = reactToMessage;
 
