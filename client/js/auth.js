@@ -28,7 +28,11 @@ const regError = document.getElementById('regError');
 // Check if already authenticated
 (async function checkAuth() {
   try {
-    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    const token = localStorage.getItem('chatToken');
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch('/api/auth/me', { credentials: 'include', headers });
     if (res.ok) {
       window.location.replace('/index.html');
     }
@@ -37,16 +41,20 @@ const regError = document.getElementById('regError');
   }
 })();
 
-// Password toggles
-document.querySelectorAll('.toggle-password-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const targetId = btn.dataset.target;
+// Password toggles with event delegation (handles SVG child touch/clicks on mobile)
+document.addEventListener('click', (e) => {
+  const toggleBtn = e.target.closest('.toggle-password-btn');
+  if (toggleBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const targetId = toggleBtn.dataset.target;
     const input = document.getElementById(targetId);
-    if (!input) return;
-    const isPwd = input.type === 'password';
-    input.type = isPwd ? 'text' : 'password';
-    btn.classList.toggle('active', isPwd);
-  });
+    if (input) {
+      const isPwd = input.type === 'password';
+      input.type = isPwd ? 'text' : 'password';
+      toggleBtn.classList.toggle('active', isPwd);
+    }
+  }
 });
 
 // Tab Switchers
@@ -85,85 +93,144 @@ function showRegError(msg) {
   }
 }
 
-// Login Submission
-loginForm?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  hideErrors();
+// Login & Register Submission Setup
+function setupAuthForms() {
+  const loginForm = document.getElementById('loginForm');
+  const registerForm = document.getElementById('registerForm');
 
-  const username = usernameInput.value.trim();
-  const password = passwordInput.value;
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-  if (!username || !password) {
-    showLoginError('Please enter your username and password.');
-    return;
-  }
+      const usernameEl = document.getElementById('username');
+      const passwordEl = document.getElementById('password');
+      const btnEl = document.getElementById('loginBtn');
+      const textEl = document.getElementById('loginBtnText');
+      const spinnerEl = document.getElementById('loginSpinner');
+      const errorEl = document.getElementById('loginError');
 
-  loginBtn.disabled = true;
-  loginBtnText.style.display = 'none';
-  loginSpinner.style.display = 'inline-block';
+      if (errorEl) errorEl.classList.remove('visible');
 
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-      credentials: 'include',
+      const username = usernameEl ? usernameEl.value.trim() : '';
+      const password = passwordEl ? passwordEl.value : '';
+
+      if (!username || !password) {
+        if (errorEl) {
+          errorEl.textContent = 'Please enter your username and password.';
+          errorEl.classList.add('visible');
+        }
+        return;
+      }
+
+      if (btnEl) btnEl.disabled = true;
+      if (textEl) textEl.style.display = 'none';
+      if (spinnerEl) spinnerEl.style.display = 'inline-block';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+          credentials: 'include',
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          if (errorEl) {
+            errorEl.textContent = data.error || 'Invalid username or password.';
+            errorEl.classList.add('visible');
+          }
+          return;
+        }
+
+        if (data.token) {
+          localStorage.setItem('chatToken', data.token);
+          document.cookie = `chatToken=${data.token}; path=/; max-age=1296000; SameSite=Lax`;
+        }
+
+        window.location.href = '/index.html';
+      } catch (err) {
+        if (errorEl) {
+          errorEl.textContent = 'Cannot connect to server: ' + err.message;
+          errorEl.classList.add('visible');
+        }
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+        if (textEl) textEl.style.display = 'inline';
+        if (spinnerEl) spinnerEl.style.display = 'none';
+      }
     });
-
-    const data = await res.json();
-    if (!res.ok) {
-      showLoginError(data.error || 'Invalid username or password.');
-      return;
-    }
-
-    window.location.replace('/index.html');
-  } catch {
-    showLoginError('Cannot connect to server. Please try again.');
-  } finally {
-    loginBtn.disabled = false;
-    loginBtnText.style.display = 'inline';
-    loginSpinner.style.display = 'none';
-  }
-});
-
-// Register Submission
-registerForm?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  hideErrors();
-
-  const displayName = regDisplayName.value.trim();
-  const username = regUsername.value.trim();
-  const password = regPassword.value;
-
-  if (!displayName || !username || !password) {
-    showRegError('All fields are required.');
-    return;
   }
 
-  regBtn.disabled = true;
-  regBtnText.style.display = 'none';
-  regSpinner.style.display = 'inline-block';
+  if (registerForm) {
+    registerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-  try {
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName, username, password }),
-      credentials: 'include',
+      const nameEl = document.getElementById('regDisplayName');
+      const userEl = document.getElementById('regUsername');
+      const passEl = document.getElementById('regPassword');
+      const btnEl = document.getElementById('regBtn');
+      const textEl = document.getElementById('regBtnText');
+      const spinnerEl = document.getElementById('regSpinner');
+      const errorEl = document.getElementById('regError');
+
+      if (errorEl) errorEl.classList.remove('visible');
+
+      const displayName = nameEl ? nameEl.value.trim() : '';
+      const username = userEl ? userEl.value.trim() : '';
+      const password = passEl ? passEl.value : '';
+
+      if (!displayName || !username || !password) {
+        if (errorEl) {
+          errorEl.textContent = 'All fields are required.';
+          errorEl.classList.add('visible');
+        }
+        return;
+      }
+
+      if (btnEl) btnEl.disabled = true;
+      if (textEl) textEl.style.display = 'none';
+      if (spinnerEl) spinnerEl.style.display = 'inline-block';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ displayName, username, password }),
+          credentials: 'include',
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          if (errorEl) {
+            errorEl.textContent = data.error || 'Registration failed.';
+            errorEl.classList.add('visible');
+          }
+          return;
+        }
+
+        if (data.token) {
+          localStorage.setItem('chatToken', data.token);
+          document.cookie = `chatToken=${data.token}; path=/; max-age=1296000; SameSite=Lax`;
+        }
+
+        window.location.href = '/index.html';
+      } catch (err) {
+        if (errorEl) {
+          errorEl.textContent = 'Cannot connect to server: ' + err.message;
+          errorEl.classList.add('visible');
+        }
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+        if (textEl) textEl.style.display = 'inline';
+        if (spinnerEl) spinnerEl.style.display = 'none';
+      }
     });
-
-    const data = await res.json();
-    if (!res.ok) {
-      showRegError(data.error || 'Registration failed.');
-      return;
-    }
-
-    window.location.replace('/index.html');
-  } catch {
-    showRegError('Cannot connect to server. Please try again.');
-  } finally {
-    regBtn.disabled = false;
-    regBtnText.style.display = 'inline';
-    regSpinner.style.display = 'none';
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupAuthForms);
+} else {
+  setupAuthForms();
+}

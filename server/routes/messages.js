@@ -13,19 +13,23 @@ router.get('/', requireAuth, async (req, res) => {
     const PAGE_SIZE = 20;
     const { before, limit } = req.query;
 
+    // 48-Hour Auto-Delete Cutoff: never return messages older than 48 hours
+    const cutoffDate = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
     // Build query: messages between the two users, excluding deleted messages
     const query = {
       $or: [
         { senderId: req.user._id, deletedForSender: { $ne: true } },
         { receiverId: req.user._id, deletedForReceiver: { $ne: true } },
       ],
+      createdAt: { $gte: cutoffDate },
     };
 
     // Cursor-based pagination: get messages before a given message ID
     if (before) {
       const cursorMessage = await Message.findById(before).select('createdAt').lean();
       if (cursorMessage) {
-        query.createdAt = { $lt: cursorMessage.createdAt };
+        query.createdAt = { $lt: cursorMessage.createdAt, $gte: cutoffDate };
       }
     }
 
@@ -168,6 +172,50 @@ router.delete('/:id', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Delete message error:', err.message);
     res.status(500).json({ error: 'Failed to delete message.' });
+  }
+});
+
+// POST /api/messages/bulk-delete — Delete multiple messages (Delete for Me or Everyone)
+router.post('/bulk-delete', requireAuth, async (req, res) => {
+  try {
+    const { messageIds, type } = req.body;
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'messageIds array is required.' });
+    }
+
+    const userId = req.user._id.toString();
+    const messages = await Message.find({ _id: { $in: messageIds } });
+
+    const deletedIds = [];
+    for (const msg of messages) {
+      const isSender = msg.senderId.toString() === userId;
+      const isReceiver = msg.receiverId.toString() === userId;
+      if (!isSender && !isReceiver) continue;
+
+      if (type === 'everyone') {
+        if (isSender) { // only sender can delete for everyone
+          msg.deletedForEveryone = true;
+          msg.text = '🚫 This message was deleted';
+          await msg.save();
+          deletedIds.push(msg._id);
+        }
+      } else {
+        // delete for me
+        if (isSender) msg.deletedForSender = true;
+        if (isReceiver) msg.deletedForReceiver = true;
+        await msg.save();
+        deletedIds.push(msg._id);
+      }
+    }
+
+    res.json({
+      success: true,
+      deletedIds,
+      type,
+    });
+  } catch (err) {
+    console.error('Bulk delete error:', err.message);
+    res.status(500).json({ error: 'Failed to bulk delete messages.' });
   }
 });
 

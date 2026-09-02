@@ -102,8 +102,10 @@ async function uploadAndSendPhoto() {
     const formData = new FormData();
     formData.append('file', selectedPhotoFile);
 
+    const headers = typeof window.getAuthHeaders === 'function' ? window.getAuthHeaders() : {};
     const res = await fetch('/api/media/upload', {
       method: 'POST',
+      headers,
       body: formData,
       credentials: 'include',
     });
@@ -307,8 +309,10 @@ async function uploadAndSendVoice() {
     formData.append('file', file);
     formData.append('duration', String(recordingSeconds));
 
+    const headers = typeof window.getAuthHeaders === 'function' ? window.getAuthHeaders() : {};
     const res = await fetch('/api/media/upload', {
       method: 'POST',
+      headers,
       body: formData,
       credentials: 'include',
     });

@@ -13,9 +13,12 @@ let socket = null;
 let reconnectAttempts = 0;
 
 function initSocket() {
+  const token = localStorage.getItem('chatToken');
   // Connect to same origin (Express serves both frontend and backend)
   socket = io({
     withCredentials: true,
+    auth: { token },
+    query: { token },
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,

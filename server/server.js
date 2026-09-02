@@ -8,6 +8,7 @@ const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const { Server } = require('socket.io');
 
@@ -38,9 +39,11 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
       mediaSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
-      connectSrc: ["'self'", "wss:", "ws:"],
+      connectSrc: ["'self'", "wss:", "ws:", "http:", "https:"],
+      upgradeInsecureRequests: isProduction ? [] : null,
     },
   },
+  hsts: isProduction,
 }));
 
 // CORS — allow client origin with credentials
@@ -55,17 +58,25 @@ app.use(cors({
 
 // ─── General Middleware ───────────────────────────────────────────────────────
 
+app.use(compression()); // Gzip/Brotli payload compression for fast responses
 app.use(morgan(isProduction ? 'combined' : 'dev'));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-// ─── Static Files (Frontend) ──────────────────────────────────────────────────
+// Disable browser caching during dev testing to ensure mobile phones get fresh code
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 // Serve the client/ folder as static files
 const clientDir = path.join(__dirname, '../client');
 app.use(express.static(clientDir, {
-  maxAge: isProduction ? '1d' : '0',
+  etag: false,
+  lastModified: false,
 }));
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
@@ -133,10 +144,10 @@ async function start() {
     await connectDatabase();
 
     // Start the HTTP + Socket.IO server
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`\n🚀 Server running on http://localhost:${PORT}`);
-      console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`   Client URL:  ${CLIENT_URL}\n`);
+      console.log(`📱 Local Wi-Fi Access: http://10.71.106.152:${PORT}`);
+      console.log(`   Environment: ${process.env.NODE_ENV || 'development'}\n`);
     });
 
     // Start media cleanup cron job

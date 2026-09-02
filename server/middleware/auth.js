@@ -4,12 +4,23 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 /**
- * Middleware that verifies the JWT from HTTP-only cookie.
+ * Middleware that verifies the JWT from cookie OR Authorization header.
  * Attaches the user object to req.user if valid.
  */
 async function requireAuth(req, res, next) {
   try {
-    const token = req.cookies?.chatToken;
+    let token = req.cookies?.chatToken;
+
+    if (!token && req.headers.authorization) {
+      const parts = req.headers.authorization.split(' ');
+      if (parts.length === 2 && parts[0] === 'Bearer') {
+        token = parts[1];
+      }
+    }
+
+    if (!token && req.query?.token) {
+      token = req.query.token;
+    }
 
     if (!token) {
       return res.status(401).json({ error: 'Not authenticated' });
@@ -36,7 +47,7 @@ async function requireAuth(req, res, next) {
 }
 
 /**
- * Socket.IO middleware that verifies the JWT from cookie.
+ * Socket.IO middleware that verifies the JWT from cookie OR auth token.
  * Used in chatSocket.js to authenticate socket connections.
  */
 async function requireAuthSocket(socket, next) {
@@ -44,10 +55,10 @@ async function requireAuthSocket(socket, next) {
     // Parse cookies from handshake headers
     const cookieHeader = socket.handshake.headers.cookie || '';
     const cookies = parseCookies(cookieHeader);
-    const token = cookies['chatToken'];
+    let token = cookies['chatToken'] || socket.handshake.auth?.token || socket.handshake.query?.token;
 
     if (!token) {
-      console.warn('⚠️ Socket auth failed: No chatToken cookie found in header:', cookieHeader);
+      console.warn('⚠️ Socket auth failed: No chatToken found in cookie, auth, or query');
       return next(new Error('Not authenticated'));
     }
 

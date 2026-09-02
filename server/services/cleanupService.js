@@ -17,8 +17,35 @@ const { deleteFile } = require('./storageService');
 async function runCleanup() {
   try {
     const now = new Date();
+    // 48 hours ago cutoff
+    const autoDeleteCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-    // Find expired media messages that haven't been cleaned up yet
+    // 1. Permanently delete all messages older than 48 hours (text & media)
+    const oldMessages = await Message.find({
+      createdAt: { $lte: autoDeleteCutoff },
+    });
+
+    if (oldMessages.length > 0) {
+      console.log(`🧹 48-Hour Cleanup: found ${oldMessages.length} message(s) older than 48 hours.`);
+
+      // Clean up files for any media messages before deleting record
+      for (const msg of oldMessages) {
+        if (msg.mediaStorageKey) {
+          try {
+            await deleteFile(msg.mediaStorageKey);
+          } catch (err) {
+            console.error(`Failed to delete media for message ${msg._id}:`, err.message);
+          }
+        }
+      }
+
+      const deleteRes = await Message.deleteMany({
+        createdAt: { $lte: autoDeleteCutoff },
+      });
+      console.log(`✅ Permanently deleted ${deleteRes.deletedCount} message(s) older than 48 hours.`);
+    }
+
+    // 2. Also clean up any earlier expired media messages (expiresAt <= now)
     const expiredMessages = await Message.find({
       type: { $in: ['image', 'audio'] },
       expiresAt: { $lte: now },
@@ -26,27 +53,17 @@ async function runCleanup() {
       mediaStorageKey: { $ne: null },
     });
 
-    if (expiredMessages.length === 0) {
-      return; // Nothing to clean up
-    }
-
-    console.log(`🧹 Cleanup: found ${expiredMessages.length} expired media message(s)`);
-
     for (const msg of expiredMessages) {
       try {
-        // Delete the actual file from storage
         await deleteFile(msg.mediaStorageKey);
-
-        // Mark message as media-deleted (keep message record for chat history)
         await Message.findByIdAndUpdate(msg._id, {
           mediaDeleted: true,
           mediaUrl: null,
           mediaStorageKey: null,
         });
-
-        console.log(`✅ Cleaned up ${msg.type} message: ${msg._id}`);
+        console.log(`✅ Cleaned up expired media: ${msg._id}`);
       } catch (err) {
-        console.error(`Failed to cleanup message ${msg._id}:`, err.message);
+        console.error(`Failed to cleanup media message ${msg._id}:`, err.message);
       }
     }
   } catch (err) {

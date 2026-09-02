@@ -36,20 +36,101 @@ let lastMessageSnippet = '';
 
 // ─── Init ─────────────────────────────────────────────────────────
 
-async function init() {
+function getAuthHeaders(existingHeaders = {}) {
+  const token = localStorage.getItem('chatToken');
+  if (token) {
+    existingHeaders['Authorization'] = `Bearer ${token}`;
+  }
+  return existingHeaders;
+}
+window.getAuthHeaders = getAuthHeaders;
+
+// ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
+
+function applyCachedState() {
   try {
-    // 1. Fetch current user + partner in 1 fast round-trip
-    const res = await fetch('/api/auth/me', { credentials: 'include' });
-    if (!res.ok) {
+    const cachedUser = localStorage.getItem('cached_user');
+    const cachedPartner = localStorage.getItem('cached_partner');
+    const cachedTheme = localStorage.getItem('chat_theme') || 'purple';
+    const cachedMotion = localStorage.getItem('chat_motion') || 'floating-hearts';
+    const cachedMessages = localStorage.getItem('cached_messages');
+
+    // Instantly apply theme
+    applyThemeAndMotion(cachedTheme, cachedMotion);
+
+    // Instantly populate current user profile
+    if (cachedUser) {
+      currentUser = JSON.parse(cachedUser);
+      updateMyProfileUI();
+    }
+
+    // Instantly populate partner profile
+    if (cachedPartner) {
+      partner = JSON.parse(cachedPartner);
+      updatePartnerInfo(partner);
+    }
+
+    // Instantly render last 20 messages with 0ms blank screen (filtering out >48h)
+    if (cachedMessages) {
+      const messages = JSON.parse(cachedMessages);
+      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      const validMessages = Array.isArray(messages) ? messages.filter(m => new Date(m.createdAt).getTime() >= cutoff) : [];
+
+      if (validMessages.length > 0) {
+        emptyChat.style.display = 'none';
+        for (const msg of validMessages) {
+          renderMessage(msg, 'append');
+        }
+        scrollToBottom(false);
+      }
+    }
+  } catch (e) {
+    console.warn('Cache hydration skipped:', e);
+  }
+}
+
+function saveMessagesToCache(messages) {
+  try {
+    if (Array.isArray(messages) && messages.length > 0) {
+      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      // Only keep messages within 48h (max 25)
+      const valid = messages.filter(m => new Date(m.createdAt).getTime() >= cutoff).slice(-25);
+      localStorage.setItem('cached_messages', JSON.stringify(valid));
+    }
+  } catch (e) {}
+}
+
+async function init() {
+  // 1. Instant Synchronous Render (0ms perceived load)
+  applyCachedState();
+
+  // Setup UI listeners immediately so interaction is instant
+  setupInputEvents();
+  setupSettingsAndProfile();
+  setupDeleteModalListeners();
+  setupReplyListeners();
+  setupInChatSearch();
+  setupScrollObserver();
+  setupMobileBackButtonHandling();
+
+  // 2. Parallel Network Fetch (cuts network wait time by 50%)
+  try {
+    const [authRes, messagesRes] = await Promise.all([
+      fetch('/api/auth/me', { credentials: 'include', headers: getAuthHeaders() }),
+      fetch('/api/messages?limit=20', { credentials: 'include', headers: getAuthHeaders() }),
+    ]);
+
+    if (!authRes.ok) {
       window.location.replace('/login.html');
       return;
     }
 
-    const { user, partner: partnerUser } = await res.json();
+    const { user, partner: partnerUser } = await authRes.json();
     currentUser = user;
+    localStorage.setItem('cached_user', JSON.stringify(user));
     updateMyProfileUI();
 
-    // Apply server-persisted active shared room theme
+    // Sync theme with server
     const activeTheme = user.currentTheme || localStorage.getItem('chat_theme') || 'purple';
     const activeMotion = user.currentMotion || localStorage.getItem('chat_motion') || 'floating-hearts';
     applyThemeAndMotion(activeTheme, activeMotion);
@@ -58,22 +139,34 @@ async function init() {
 
     if (partnerUser) {
       updatePartnerInfo(partnerUser);
+      localStorage.setItem('cached_partner', JSON.stringify(partnerUser));
     }
 
-    // 2. Setup UI listeners
-    setupInputEvents();
-    setupSettingsAndProfile();
-    setupDeleteModalListeners();
-    setupReplyListeners();
-    setupInChatSearch();
-    setupScrollObserver();
+    // Sync messages
+    if (messagesRes.ok) {
+      const { messages, hasMore } = await messagesRes.json();
+      hasMoreMessages = hasMore;
+      loadMoreBtn.style.display = hasMore ? 'flex' : 'none';
 
-    // 3. Load initial messages
-    await loadMessages();
+      if (messages.length === 0 && renderedMessageIds.size === 0) {
+        emptyChat.style.display = 'flex';
+      } else if (messages.length > 0) {
+        emptyChat.style.display = 'none';
+        for (const msg of messages) {
+          renderMessage(msg, 'append');
+        }
+        oldestMessageId = messages[0]._id;
+        saveMessagesToCache(messages);
+        scrollToBottom(false);
+      }
+    }
 
   } catch (err) {
-    console.error('Init error:', err);
-    UI.showToast('Failed to load chat. Please refresh.', 'error');
+    console.error('Init parallel fetch error:', err);
+    // If offline but cache rendered, let user stay in chat!
+    if (!currentUser) {
+      UI.showToast('Failed to connect to chat. Please refresh.', 'error');
+    }
   }
 }
 
@@ -102,7 +195,7 @@ function showChatsList() {
 
 async function loadPartnerInfo() {
   try {
-    const res = await fetch('/api/auth/partner', { credentials: 'include' });
+    const res = await fetch('/api/auth/partner', { credentials: 'include', headers: getAuthHeaders() });
     if (res.ok) {
       const { partner: p } = await res.json();
       if (p) updatePartnerInfo(p);
@@ -117,12 +210,17 @@ async function loadPartnerInfo() {
 async function loadMessages(before = null) {
   if (isLoadingMessages) return;
   isLoadingMessages = true;
+  if (loadMoreBtn) {
+    loadMoreBtn.classList.add('loading');
+    const textEl = loadMoreBtn.querySelector('.load-more-text');
+    if (textEl) textEl.textContent = 'Loading earlier messages...';
+  }
 
   try {
     let url = '/api/messages?limit=20';
     if (before) url += `&before=${before}`;
 
-    const res = await fetch(url, { credentials: 'include' });
+    const res = await fetch(url, { credentials: 'include', headers: getAuthHeaders() });
     if (!res.ok) throw new Error('Failed to load messages');
 
     const { messages, hasMore } = await res.json();
@@ -153,6 +251,9 @@ async function loadMessages(before = null) {
     // Track oldest message for pagination
     if (messages.length > 0) {
       oldestMessageId = messages[0]._id;
+      if (!before) {
+        saveMessagesToCache(messages);
+      }
     }
 
     // Discover partner from messages
@@ -174,6 +275,11 @@ async function loadMessages(before = null) {
     UI.showToast('Could not load messages.', 'error');
   } finally {
     isLoadingMessages = false;
+    if (loadMoreBtn) {
+      loadMoreBtn.classList.remove('loading');
+      const textEl = loadMoreBtn.querySelector('.load-more-text');
+      if (textEl) textEl.textContent = 'Load older messages';
+    }
   }
 }
 
@@ -293,6 +399,9 @@ function renderMessage(msg, position = 'append') {
   wrapper.dataset.messageId = msg._id;
   wrapper.dataset.sender = isMe ? 'me' : 'them';
   wrapper.dataset.time = msg.createdAt;
+  if (isSelectionMode && selectedMessageIds.has(msg._id)) {
+    wrapper.classList.add('selected');
+  }
 
   // Check if message was deleted for everyone
   if (msg.deletedForEveryone) {
@@ -411,11 +520,7 @@ function createDateSeparator(label) {
   const sep = document.createElement('div');
   sep.className = 'date-separator';
   sep.dataset.date = label;
-  sep.innerHTML = `
-    <div class="date-separator-line"></div>
-    <span class="date-separator-label">${label}</span>
-    <div class="date-separator-line"></div>
-  `;
+  sep.innerHTML = `<span class="date-separator-label">${escapeHtml(label)}</span>`;
   return sep;
 }
 
@@ -798,6 +903,15 @@ function setupSettingsAndProfile() {
     openProfileModal();
   });
 
+  // Logout button
+  const logoutBtn = document.getElementById('logoutBtn');
+  logoutBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    settingsDropdown.style.display = 'none';
+    settingsBtn.classList.remove('active');
+    logout();
+  });
+
   // Close profile modal
   profileModalClose?.addEventListener('click', closeProfileModal);
   profileCancelBtn?.addEventListener('click', closeProfileModal);
@@ -850,6 +964,7 @@ function setupSettingsAndProfile() {
       const res = await fetch('/api/auth/profile', {
         method: 'PUT',
         credentials: 'include',
+        headers: getAuthHeaders(),
         body: formData,
       });
 
@@ -899,6 +1014,10 @@ function updateSendButton() {
   const hasText = messageInput.value.trim().length > 0;
   sendBtn.disabled = !hasText;
   sendBtn.classList.toggle('has-content', hasText);
+  const inputRow = document.querySelector('.input-row');
+  if (inputRow) {
+    inputRow.classList.toggle('has-text', hasText);
+  }
 }
 
 // ─── Typing Events ────────────────────────────────────────────────
@@ -928,7 +1047,7 @@ async function onReconnect() {
   // We only load new messages (don't clear existing)
   // Simple approach: reload last page and dedup via renderedMessageIds
   try {
-    const res = await fetch('/api/messages?limit=20', { credentials: 'include' });
+    const res = await fetch('/api/messages?limit=20', { credentials: 'include', headers: getAuthHeaders() });
     if (!res.ok) return;
 
     const { messages } = await res.json();
@@ -954,12 +1073,27 @@ function scrollToBottom(smooth = true) {
 
 async function logout() {
   try {
+    const token = localStorage.getItem('chatToken');
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     await fetch('/api/auth/logout', {
       method: 'POST',
       credentials: 'include',
+      headers,
     });
   } catch {}
-  window.location.replace('/login.html');
+
+  // Explicitly clear token from localStorage and cookie
+  localStorage.removeItem('chatToken');
+  document.cookie = 'chatToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; max-age=0; SameSite=Lax';
+
+  // Disconnect socket if connected
+  if (socket && typeof socket.disconnect === 'function') {
+    socket.disconnect();
+  }
+
+  window.location.replace('/login.html?logout=true');
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -1234,25 +1368,98 @@ function applyThemeAndMotion(themeName, motionName) {
   }
 }
 
-// ─── Message Deletion Handlers (WhatsApp Style) ───────────────────
+// ─── Message Deletion & Multiple Selection Handlers (WhatsApp Style) ───
 
 let targetDeleteMessageId = null;
+let isBulkDeleteActive = false;
+let isSelectionMode = false;
+let selectedMessageIds = new Set();
+let isDeleteListenersSetupDone = false;
+let lastToggleMsgId = null;
+let lastToggleTimestamp = 0;
+
+function safeToggleMessageSelection(messageId) {
+  if (!messageId) return;
+  const now = Date.now();
+  if (lastToggleMsgId === messageId && (now - lastToggleTimestamp < 450)) {
+    return; // Block duplicate simulated click within 450ms!
+  }
+  lastToggleTimestamp = now;
+  lastToggleMsgId = messageId;
+  toggleMessageSelection(messageId);
+}
 
 function setupDeleteModalListeners() {
+  if (isDeleteListenersSetupDone) return;
+  isDeleteListenersSetupDone = true;
+
   const deleteModal = document.getElementById('deleteMessageModal');
   const deleteForEveryoneBtn = document.getElementById('deleteForEveryoneBtn');
   const deleteForMeBtn = document.getElementById('deleteForMeBtn');
   const deleteCancelBtn = document.getElementById('deleteCancelBtn');
+  const deleteSelectionBtn = document.getElementById('deleteSelectionBtn');
+  const cancelSelectionBtn = document.getElementById('cancelSelectionBtn');
 
   if (!deleteModal) return;
 
-  deleteForEveryoneBtn?.addEventListener('click', () => executeDeleteMessage('everyone'));
-  deleteForMeBtn?.addEventListener('click', () => executeDeleteMessage('me'));
+  deleteForEveryoneBtn?.addEventListener('click', () => {
+    if (isBulkDeleteActive) {
+      executeBulkDelete('everyone');
+    } else {
+      executeDeleteMessage('everyone');
+    }
+  });
+
+  deleteForMeBtn?.addEventListener('click', () => {
+    if (isBulkDeleteActive) {
+      executeBulkDelete('me');
+    } else {
+      executeDeleteMessage('me');
+    }
+  });
+
   deleteCancelBtn?.addEventListener('click', closeDeleteModal);
 
   deleteModal.addEventListener('click', (e) => {
     if (e.target === deleteModal) closeDeleteModal();
   });
+
+  // Multiple selection action buttons
+  deleteSelectionBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (selectedMessageIds.size === 0) return;
+    isBulkDeleteActive = true;
+    openDeleteModal(null, false);
+  });
+
+  cancelSelectionBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    exitSelectionMode();
+  });
+
+  // Mobile Touch Tap: trigger selection immediately on finger release
+  chatMessages?.addEventListener('touchend', (e) => {
+    if (!isSelectionMode) return;
+    const touch = e.changedTouches?.[0];
+    if (!touch) return;
+
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const wrapper = el?.closest('.message-wrapper');
+    if (wrapper && wrapper.dataset.messageId) {
+      safeToggleMessageSelection(wrapper.dataset.messageId);
+    }
+  }, { passive: true, capture: true });
+
+  // Desktop Mouse Click: trigger selection on click (also handles any fallthrough clicks)
+  chatMessages?.addEventListener('click', (e) => {
+    if (!isSelectionMode) return;
+    const wrapper = e.target.closest('.message-wrapper');
+    if (wrapper && wrapper.dataset.messageId) {
+      e.preventDefault();
+      e.stopPropagation();
+      safeToggleMessageSelection(wrapper.dataset.messageId);
+    }
+  }, true);
 
   // Global click handler for trash icon click
   document.addEventListener('click', (e) => {
@@ -1263,56 +1470,125 @@ function setupDeleteModalListeners() {
       const messageId = wrapper?.dataset.messageId;
       const isMe = wrapper?.dataset.sender === 'me';
       if (messageId) {
+        isBulkDeleteActive = false;
         openDeleteModal(messageId, isMe);
       }
     }
   });
+}
 
-  // Mobile Long-Press (Press & Hold for 500ms to open delete options)
-  let longPressTimer = null;
-  let touchStartX = 0;
-  let touchStartY = 0;
+// ─── Multiple Message Selection Mode (WhatsApp Style) ──────────────
 
-  chatMessages?.addEventListener('touchstart', (e) => {
-    const wrapper = e.target.closest('.message-wrapper');
-    if (!wrapper) return;
+function startSelectionMode(initialMessageId = null) {
+  isSelectionMode = true;
+  selectedMessageIds.clear();
+  if (initialMessageId) {
+    selectedMessageIds.add(initialMessageId);
+  }
 
-    const touch = e.touches[0];
-    touchStartX = touch.clientX;
-    touchStartY = touch.clientY;
+  const chatCard = document.getElementById('chatCard');
+  if (chatCard) chatCard.classList.add('in-selection-mode');
 
-    const messageId = wrapper.dataset.messageId;
-    const isMe = wrapper.dataset.sender === 'me';
-    if (!messageId) return;
+  const selHeader = document.getElementById('selectionHeader');
+  if (selHeader) selHeader.style.display = 'flex';
 
-    longPressTimer = setTimeout(() => {
-      if (navigator.vibrate) navigator.vibrate(40);
-      openDeleteModal(messageId, isMe);
-    }, 500);
-  }, { passive: true });
+  updateSelectionUI();
+  UI.showToast('Selection mode: tap messages to select 🔘', 'info');
+}
 
-  chatMessages?.addEventListener('touchmove', (e) => {
-    if (!longPressTimer) return;
-    const touch = e.touches[0];
-    if (Math.abs(touch.clientX - touchStartX) > 10 || Math.abs(touch.clientY - touchStartY) > 10) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-    }
-  }, { passive: true });
+function toggleMessageSelection(messageId) {
+  if (!messageId) return;
 
-  chatMessages?.addEventListener('touchend', () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-    }
+  if (selectedMessageIds.has(messageId)) {
+    selectedMessageIds.delete(messageId);
+  } else {
+    selectedMessageIds.add(messageId);
+  }
+
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  const countText = document.getElementById('selectionCountText');
+  const deleteBtn = document.getElementById('deleteSelectionBtn');
+  const count = selectedMessageIds.size;
+
+  if (countText) {
+    countText.textContent = count > 0 ? `${count} selected` : 'Select messages';
+  }
+
+  if (deleteBtn) {
+    deleteBtn.style.opacity = count > 0 ? '1' : '0.4';
+    deleteBtn.style.pointerEvents = count > 0 ? 'auto' : 'none';
+  }
+
+  // Highlight selected messages in the DOM
+  document.querySelectorAll('.message-wrapper').forEach((el) => {
+    const id = el.dataset.messageId;
+    el.classList.toggle('selected', selectedMessageIds.has(id));
   });
+}
 
-  chatMessages?.addEventListener('touchcancel', () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-    }
+function exitSelectionMode() {
+  isSelectionMode = false;
+  selectedMessageIds.clear();
+  isBulkDeleteActive = false;
+
+  const chatCard = document.getElementById('chatCard');
+  if (chatCard) chatCard.classList.remove('in-selection-mode');
+
+  const selHeader = document.getElementById('selectionHeader');
+  if (selHeader) selHeader.style.display = 'none';
+
+  document.querySelectorAll('.message-wrapper.selected').forEach((el) => {
+    el.classList.remove('selected');
   });
+}
+
+async function executeBulkDelete(type) {
+  const ids = Array.from(selectedMessageIds);
+  exitSelectionMode();
+  closeDeleteModal();
+
+  if (ids.length === 0) return;
+
+  try {
+    const res = await fetch('/api/messages/bulk-delete', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messageIds: ids, type }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      if (type === 'me') {
+        for (const id of ids) {
+          const wrapper = document.querySelector(`.message-wrapper[data-message-id="${id}"]`);
+          if (wrapper) wrapper.remove();
+        }
+        UI.showToast(`${ids.length} message(s) deleted for you 🗑️`, 'info');
+      } else if (type === 'everyone') {
+        for (const id of ids) {
+          onMessageDeleted(id, 'everyone');
+        }
+        if (window.ChatSocket) {
+          for (const id of ids) {
+            window.ChatSocket.emitMessageDeleted({ messageId: id, type: 'everyone' });
+          }
+        }
+        UI.showToast(`${ids.length} message(s) deleted for everyone 🗑️`, 'success');
+      }
+    } else {
+      UI.showToast(data.error || 'Failed to delete selected messages.', 'error');
+    }
+  } catch (err) {
+    console.error('Bulk delete error:', err);
+    UI.showToast('Failed to delete messages. Check connection.', 'error');
+  }
 }
 
 // ─── Reply & Context Menu System (WhatsApp Style) ───────────────────
@@ -1356,22 +1632,85 @@ function setupReplyListeners() {
     if (msgContextMenu) msgContextMenu.style.display = 'none';
   });
 
+  function showContextMenu(wrapper, clientX, clientY) {
+    if (!wrapper || !msgContextMenu) return;
+    contextMenuTargetWrapper = wrapper;
+
+    let left = clientX;
+    let top = clientY;
+    if (left + 180 > window.innerWidth) left = window.innerWidth - 185;
+    if (top + 150 > window.innerHeight) top = window.innerHeight - 155;
+    if (left < 10) left = 10;
+    if (top < 10) top = 10;
+
+    msgContextMenu.style.left = `${left}px`;
+    msgContextMenu.style.top = `${top}px`;
+    msgContextMenu.style.display = 'flex';
+  }
+
+  // Desktop Right-Click Context Menu
   chatMessages?.addEventListener('contextmenu', (e) => {
     const wrapper = e.target.closest('.message-wrapper');
     if (!wrapper) return;
 
     e.preventDefault();
-    contextMenuTargetWrapper = wrapper;
+    showContextMenu(wrapper, e.clientX, e.clientY);
+  });
 
-    let left = e.clientX;
-    let top = e.clientY;
-    if (left + 180 > window.innerWidth) left = window.innerWidth - 185;
-    if (top + 150 > window.innerHeight) top = window.innerHeight - 155;
+  // Prevent Android/iOS native text selection and Google Search Drawer on message long-press
+  document.addEventListener('selectionchange', () => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0) {
+      const node = sel.anchorNode;
+      if (node && chatMessages && chatMessages.contains(node)) {
+        sel.removeAllRanges();
+      }
+    }
+  });
 
-    if (msgContextMenu) {
-      msgContextMenu.style.left = `${left}px`;
-      msgContextMenu.style.top = `${top}px`;
-      msgContextMenu.style.display = 'flex';
+  // Mobile Long-Press (Press & Hold for 450ms opens Context Menu ONLY)
+  let longPressTimer = null;
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  chatMessages?.addEventListener('touchstart', (e) => {
+    if (isSelectionMode) return;
+    const wrapper = e.target.closest('.message-wrapper');
+    if (!wrapper) return;
+
+    if (window.getSelection) window.getSelection().removeAllRanges();
+
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+
+    longPressTimer = setTimeout(() => {
+      if (window.getSelection) window.getSelection().removeAllRanges();
+      if (navigator.vibrate) navigator.vibrate(40);
+      showContextMenu(wrapper, touchStartX, touchStartY);
+    }, 450);
+  }, { passive: true });
+
+  chatMessages?.addEventListener('touchmove', (e) => {
+    if (!longPressTimer) return;
+    const touch = e.touches[0];
+    if (Math.abs(touch.clientX - touchStartX) > 10 || Math.abs(touch.clientY - touchStartY) > 10) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }, { passive: true });
+
+  chatMessages?.addEventListener('touchend', () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  });
+
+  chatMessages?.addEventListener('touchcancel', () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
     }
   });
 
@@ -1397,12 +1736,24 @@ function setupReplyListeners() {
     if (msgContextMenu) msgContextMenu.style.display = 'none';
   });
 
-  ctxDeleteBtn?.addEventListener('click', () => {
+  const ctxSelectBtn = document.getElementById('ctxSelectBtn');
+  ctxSelectBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (msgContextMenu) msgContextMenu.style.display = 'none';
+    if (!contextMenuTargetWrapper) return;
+    const messageId = contextMenuTargetWrapper.dataset.messageId;
+    startSelectionMode(messageId);
+  });
+
+  ctxDeleteBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
     if (!contextMenuTargetWrapper) return;
     const messageId = contextMenuTargetWrapper.dataset.messageId;
     const isMe = contextMenuTargetWrapper.dataset.sender === 'me';
-    openDeleteModal(messageId, isMe);
     if (msgContextMenu) msgContextMenu.style.display = 'none';
+    openDeleteModal(messageId, isMe);
   });
 
   // Touch Drag-Right (Swipe-to-Reply)
@@ -1412,6 +1763,7 @@ function setupReplyListeners() {
   let currentDeltaX = 0;
 
   chatMessages?.addEventListener('touchstart', (e) => {
+    if (isSelectionMode) return;
     const wrapper = e.target.closest('.message-wrapper');
     if (!wrapper) return;
 
@@ -1488,6 +1840,7 @@ async function executeDeleteMessage(type) {
     const res = await fetch(`/api/messages/${messageId}?type=${type}`, {
       method: 'DELETE',
       credentials: 'include',
+      headers: getAuthHeaders(),
     });
 
     const data = await res.json();
@@ -1600,6 +1953,123 @@ function setupInChatSearch() {
       w.classList.remove('search-highlight');
     });
   }
+}
+
+// ─── Mobile Hardware / Gesture Back Button Optimization ────────────
+
+let lastBackPressTimestamp = 0;
+
+function handleBackButton() {
+  // 1. Multiple Message Selection Mode
+  if (isSelectionMode) {
+    exitSelectionMode();
+    return true;
+  }
+
+  // 2. Delete Confirmation Modal
+  const deleteModal = document.getElementById('deleteMessageModal');
+  if (deleteModal && (deleteModal.classList.contains('active') || deleteModal.style.display === 'flex')) {
+    closeDeleteModal();
+    return true;
+  }
+
+  // 3. Fullscreen Image Modal
+  const imageModal = document.getElementById('imageModal');
+  if (imageModal && (imageModal.classList.contains('open') || imageModal.style.display === 'flex')) {
+    if (window.closeImageModal) window.closeImageModal();
+    return true;
+  }
+
+  // 4. Profile Modal
+  const profileModal = document.getElementById('profileModal');
+  if (profileModal && (profileModal.classList.contains('active') || profileModal.style.display === 'flex')) {
+    closeProfileModal();
+    return true;
+  }
+
+  // 5. Theme Customizer Modal
+  const themeModal = document.getElementById('themeModal');
+  if (themeModal && (themeModal.classList.contains('active') || themeModal.style.display === 'flex')) {
+    closeThemeModal();
+    return true;
+  }
+
+  // 6. Emoji Picker
+  const emojiPicker = document.getElementById('emojiPicker');
+  if (emojiPicker && (emojiPicker.classList.contains('open') || emojiPicker.style.display === 'block')) {
+    if (window.EmojiPicker && window.EmojiPicker.close) {
+      window.EmojiPicker.close();
+    } else {
+      emojiPicker.classList.remove('open');
+    }
+    return true;
+  }
+
+  // 7. Context Menu (Long-press menu)
+  const msgContextMenu = document.getElementById('msgContextMenu');
+  if (msgContextMenu && msgContextMenu.style.display === 'flex') {
+    msgContextMenu.style.display = 'none';
+    return true;
+  }
+
+  // 8. Settings Dropdown (3-dots menu)
+  const settingsDropdown = document.getElementById('settingsDropdown');
+  const settingsBtn = document.getElementById('settingsBtn');
+  if (settingsDropdown && settingsDropdown.style.display === 'block') {
+    settingsDropdown.style.display = 'none';
+    if (settingsBtn) settingsBtn.classList.remove('active');
+    document.body.classList.remove('menu-open');
+    return true;
+  }
+
+  // 9. In-Chat Search Bar
+  const chatSearchBar = document.getElementById('chatSearchBar');
+  if (chatSearchBar && chatSearchBar.style.display === 'flex') {
+    chatSearchBar.style.display = 'none';
+    const chatSearchInput = document.getElementById('chatSearchInput');
+    if (chatSearchInput) chatSearchInput.value = '';
+    const wrappers = document.querySelectorAll('.message-wrapper');
+    wrappers.forEach(w => {
+      w.style.display = 'flex';
+      w.classList.remove('search-highlight');
+    });
+    const searchResultCount = document.getElementById('searchResultCount');
+    if (searchResultCount) searchResultCount.textContent = '';
+    return true;
+  }
+
+  // 10. Reply Preview Bar
+  const replyPreviewBar = document.getElementById('replyPreviewBar');
+  if (replyPreviewBar && replyPreviewBar.style.display === 'flex') {
+    cancelReplyPreview();
+    return true;
+  }
+
+  // 11. None of the above were active -> WhatsApp-style double-back to exit
+  const now = Date.now();
+  if (now - lastBackPressTimestamp < 2000) {
+    return false; // Exit app / allow history navigation
+  } else {
+    lastBackPressTimestamp = now;
+    UI.showToast('Press back again to exit', 'info', 2000);
+    return true;
+  }
+}
+
+function setupMobileBackButtonHandling() {
+  // Push an initial sentinel state into history to trap the back button
+  history.pushState({ appRoot: true }, '');
+
+  window.addEventListener('popstate', () => {
+    const handled = handleBackButton();
+    if (handled) {
+      // Re-push sentinel state so user stays in the app
+      history.pushState({ appRoot: true }, '');
+    } else {
+      // User pressed back twice within 2 seconds: let them exit naturally
+      history.back();
+    }
+  });
 }
 
 // ─── Expose to window ─────────────────────────────────────────────

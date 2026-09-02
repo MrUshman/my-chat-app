@@ -585,6 +585,97 @@ body.motion-bubbles::before {
   scroll-behavior: smooth;
 }
 
+/* WhatsApp-Style Centered Floating Date Pill */
+.date-separator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 14px 0 10px;
+  width: 100%;
+  pointer-events: none;
+  position: relative;
+  z-index: 2;
+}
+
+.date-separator-label {
+  background: rgba(26, 22, 44, 0.88);
+  color: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 14px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  letter-spacing: 0.2px;
+  user-select: none;
+  -webkit-user-select: none;
+  text-transform: capitalize;
+}
+
+/* WhatsApp-Style Modern Floating Pill for Loading Older Messages */
+.load-more-btn {
+  align-self: center;
+  margin: 6px auto 14px;
+  padding: 6px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(28, 22, 50, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: rgba(255, 255, 255, 0.82);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.load-more-btn:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.5);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.35);
+}
+
+.load-more-btn:active {
+  transform: scale(0.96);
+}
+
+.load-more-btn .load-more-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+}
+
+.load-more-btn:hover .load-more-icon {
+  transform: rotate(-45deg);
+}
+
+.load-more-btn.loading {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.load-more-btn.loading .load-more-icon {
+  animation: spinReload 0.8s linear infinite;
+}
+
+@keyframes spinReload {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Chat Input Area — Mobile-First Fixed Bottom Bar */
 .chat-input-area {
   flex-shrink: 0;
@@ -616,7 +707,7 @@ body.motion-bubbles::before {
 
 .input-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   width: 100%;
 }
@@ -625,12 +716,13 @@ body.motion-bubbles::before {
   flex: 1;
   min-width: 0;
   position: relative;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border);
   border-radius: 24px;
-  padding: 2px 12px;
+  padding: 4px 8px;
   display: flex;
   align-items: center;
+  gap: 4px;
   transition: var(--transition-fast);
 }
 
@@ -641,6 +733,8 @@ body.motion-bubbles::before {
 }
 
 #messageInput {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   max-height: 120px;
   min-height: 24px;
@@ -651,18 +745,51 @@ body.motion-bubbles::before {
   font-size: 15px;
   resize: none;
   outline: none;
-  padding: 6px 0;
+  padding: 6px 4px;
   line-height: 1.4;
 }
 
-.input-btn {
+.message-input-wrapper .input-btn {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.08);
+  background: transparent;
   color: rgba(255, 255, 255, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.message-input-wrapper .input-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
+.message-input-wrapper .input-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.input-action-wrapper {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-action-wrapper .mic-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -670,21 +797,20 @@ body.motion-bubbles::before {
   transition: all 0.2s ease;
 }
 
-.input-btn svg {
-  width: 20px;
-  height: 20px;
+.input-action-wrapper .mic-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: scale(1.05);
 }
 
-.input-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-  transform: scale(1.05);
+.input-action-wrapper .mic-btn svg {
+  width: 22px;
+  height: 22px;
 }
 
 .btn-send {
   flex-shrink: 0;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: none;
   background: linear-gradient(135deg, var(--accent-gradient-start), var(--accent-gradient-end));
@@ -698,9 +824,18 @@ body.motion-bubbles::before {
 }
 
 .btn-send svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   margin-left: 2px;
+}
+
+/* Dynamic WhatsApp Mic vs Send toggle */
+.input-row.has-text .mic-btn {
+  display: none !important;
+}
+
+.input-row:not(.has-text) .btn-send {
+  display: none !important;
 }
 
 .btn-send:disabled {
@@ -841,15 +976,10 @@ body.motion-bubbles::before {
   flex-direction: column;
   max-width: 82%;
   animation: bubblePop 180ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes bubblePop {
-  from { opacity: 0; transform: translateY(6px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.message-wrapper {
   position: relative;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
 
 .message-wrapper.me {

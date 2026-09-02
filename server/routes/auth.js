@@ -10,10 +10,10 @@ const { saveFile } = require('../services/storageService');
 
 const router = express.Router();
 
-// Rate limit: max 5 login attempts per 15 minutes per IP
+// Rate limit: max login attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: process.env.NODE_ENV === 'production' ? 30 : 500,
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -61,10 +61,11 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid username or password.' });
     }
 
-    setAuthCookie(res, user._id);
+    const token = setAuthCookie(res, user._id);
 
     res.json({
       success: true,
+      token,
       user: user.toSafeObject(),
     });
   } catch (err) {
@@ -99,14 +100,16 @@ router.post('/register', loginLimiter, async (req, res) => {
     const user = new User({
       username: cleanUsername,
       displayName: displayName.trim(),
-      passwordHash: password,
+      passwordHash: 'placeholder',
     });
 
+    await user.setPassword(password);
     await user.save();
-    setAuthCookie(res, user._id);
+    const token = setAuthCookie(res, user._id);
 
     res.json({
       success: true,
+      token,
       user: user.toSafeObject(),
     });
   } catch (err) {

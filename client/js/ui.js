@@ -5,6 +5,15 @@
  * Toast notifications, modal helpers, spinner, time formatting.
  */
 
+// ─── Global Auth Header Helper ────────────────────────────────────
+window.getAuthHeaders = function(existingHeaders = {}) {
+  const token = localStorage.getItem('chatToken');
+  if (token) {
+    existingHeaders['Authorization'] = `Bearer ${token}`;
+  }
+  return existingHeaders;
+};
+
 // ─── Toast Notifications ─────────────────────────────────────────
 
 const toastContainer = document.getElementById('toastContainer');
@@ -93,7 +102,7 @@ function formatTime(date) {
 }
 
 /**
- * Format a date to a readable label like "Today", "Yesterday", or "Aug 31"
+ * Format a date to a readable label like "Today", "Yesterday", or "24 August 2026"
  */
 function formatDateLabel(date) {
   const d = new Date(date);
@@ -103,9 +112,14 @@ function formatDateLabel(date) {
 
   const diffDays = Math.round((today - msgDay) / (1000 * 60 * 60 * 24));
 
+  const day = d.getDate();
+  const month = d.toLocaleString('en-US', { month: 'long' });
+  const year = d.getFullYear();
+  const fullDate = `${day} ${month} ${year}`;
+
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return fullDate;
 }
 
 /**

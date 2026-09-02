@@ -449,8 +449,271 @@
 
       <div id="regError" class="login-error" role="alert" aria-live="polite"></div>
     </form>
-  </div>
+  <script>
+    (function() {
+      // 1. Global unhandled error display
+      window.addEventListener('error', function(e) {
+        var errEl = document.getElementById('loginError');
+        if (errEl) {
+          errEl.textContent = 'Script error: ' + (e.message || 'Unknown');
+          errEl.classList.add('visible');
+          errEl.style.display = 'block';
+        }
+      });
 
-  <script src="/js/auth.js"></script>
+      // 2. Check existing authentication
+      (async function checkAuth() {
+        var urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('logout') === 'true') {
+          localStorage.removeItem('chatToken');
+          document.cookie = 'chatToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; max-age=0; SameSite=Lax';
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+          return; // Stay on login page after explicit logout!
+        }
+
+        try {
+          var token = localStorage.getItem('chatToken');
+          if (!token) return; // No token stored, stay on login page!
+
+          var headers = { 'Authorization': 'Bearer ' + token };
+          var res = await fetch('/api/auth/me', { credentials: 'include', headers: headers });
+          if (res.ok) {
+            window.location.replace('/index.html');
+          } else {
+            localStorage.removeItem('chatToken');
+            document.cookie = 'chatToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; max-age=0; SameSite=Lax';
+          }
+        } catch(e) {
+          // Offline or not logged in
+        }
+      })();
+
+      // 3. Tab Switcher
+      var tabLoginBtn = document.getElementById('tabLoginBtn');
+      var tabRegisterBtn = document.getElementById('tabRegisterBtn');
+      var loginForm = document.getElementById('loginForm');
+      var registerForm = document.getElementById('registerForm');
+      var loginError = document.getElementById('loginError');
+      var regError = document.getElementById('regError');
+
+      function hideErrors() {
+        if (loginError) {
+          loginError.classList.remove('visible');
+          loginError.style.display = 'none';
+        }
+        if (regError) {
+          regError.classList.remove('visible');
+          regError.style.display = 'none';
+        }
+      }
+
+      function showLoginError(msg) {
+        if (loginError) {
+          loginError.textContent = msg;
+          loginError.classList.add('visible');
+          loginError.style.display = 'block';
+        }
+      }
+
+      function showRegError(msg) {
+        if (regError) {
+          regError.textContent = msg;
+          regError.classList.add('visible');
+          regError.style.display = 'block';
+        }
+      }
+
+      if (tabLoginBtn && tabRegisterBtn) {
+        tabLoginBtn.addEventListener('click', function() {
+          tabLoginBtn.classList.add('active');
+          tabRegisterBtn.classList.remove('active');
+          if (loginForm) loginForm.style.display = 'block';
+          if (registerForm) registerForm.style.display = 'none';
+          hideErrors();
+        });
+
+        tabRegisterBtn.addEventListener('click', function() {
+          tabRegisterBtn.classList.add('active');
+          tabLoginBtn.classList.remove('active');
+          if (registerForm) registerForm.style.display = 'block';
+          if (loginForm) loginForm.style.display = 'none';
+          hideErrors();
+        });
+      }
+
+      // 4. Eye Toggle (Event Delegation)
+      document.addEventListener('click', function(e) {
+        var eyeBtn = e.target.closest('.toggle-password-btn');
+        if (eyeBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          var targetId = eyeBtn.getAttribute('data-target');
+          var input = document.getElementById(targetId);
+          if (input) {
+            var isPwd = input.type === 'password';
+            input.type = isPwd ? 'text' : 'password';
+            eyeBtn.classList.toggle('active', isPwd);
+          }
+        }
+      });
+
+      // 5. Login Submission
+      var isLoggingIn = false;
+      async function handleLogin(e) {
+        if (e) e.preventDefault();
+        if (isLoggingIn) return;
+
+        hideErrors();
+
+        var usernameEl = document.getElementById('username');
+        var passwordEl = document.getElementById('password');
+        var btnEl = document.getElementById('loginBtn');
+        var textEl = document.getElementById('loginBtnText');
+        var spinnerEl = document.getElementById('loginSpinner');
+
+        var username = usernameEl ? usernameEl.value.trim() : '';
+        var password = passwordEl ? passwordEl.value : '';
+
+        if (!username || !password) {
+          showLoginError('Please enter your username and password.');
+          return;
+        }
+
+        isLoggingIn = true;
+        if (btnEl) btnEl.disabled = true;
+        if (textEl) textEl.style.display = 'none';
+        if (spinnerEl) spinnerEl.style.display = 'inline-block';
+
+        try {
+          var res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username, password: password }),
+            credentials: 'include'
+          });
+
+          var data = await res.json();
+
+          if (!res.ok) {
+            showLoginError(data.error || 'Invalid username or password.');
+            return;
+          }
+
+          if (data.token) {
+            localStorage.setItem('chatToken', data.token);
+            document.cookie = 'chatToken=' + data.token + '; path=/; max-age=1296000; SameSite=Lax';
+          }
+
+          if (textEl) {
+            textEl.textContent = 'Redirecting... ❤️';
+            textEl.style.display = 'inline';
+          }
+          if (spinnerEl) spinnerEl.style.display = 'none';
+
+          window.location.href = '/index.html';
+        } catch(err) {
+          showLoginError('Connection error: ' + (err.message || 'Server unreachable'));
+        } finally {
+          isLoggingIn = false;
+          if (btnEl) btnEl.disabled = false;
+          if (textEl && textEl.textContent !== 'Redirecting... ❤️') textEl.style.display = 'inline';
+          if (spinnerEl) spinnerEl.style.display = 'none';
+        }
+      }
+
+      if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+      }
+      var loginBtn = document.getElementById('loginBtn');
+      if (loginBtn) {
+        loginBtn.addEventListener('click', function(e) {
+          handleLogin(e);
+        });
+      }
+
+      // 6. Register Submission
+      var isRegistering = false;
+      async function handleRegister(e) {
+        if (e) e.preventDefault();
+        if (isRegistering) return;
+
+        hideErrors();
+
+        var nameEl = document.getElementById('regDisplayName');
+        var userEl = document.getElementById('regUsername');
+        var passEl = document.getElementById('regPassword');
+        var btnEl = document.getElementById('regBtn');
+        var textEl = document.getElementById('regBtnText');
+        var spinnerEl = document.getElementById('regSpinner');
+
+        var displayName = nameEl ? nameEl.value.trim() : '';
+        var username = userEl ? userEl.value.trim() : '';
+        var password = passEl ? passEl.value : '';
+
+        if (!displayName || !username || !password) {
+          showRegError('All fields are required.');
+          return;
+        }
+
+        if (password.length < 6) {
+          showRegError('Password must be at least 6 characters.');
+          return;
+        }
+
+        isRegistering = true;
+        if (btnEl) btnEl.disabled = true;
+        if (textEl) textEl.style.display = 'none';
+        if (spinnerEl) spinnerEl.style.display = 'inline-block';
+
+        try {
+          var res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ displayName: displayName, username: username, password: password }),
+            credentials: 'include'
+          });
+
+          var data = await res.json();
+
+          if (!res.ok) {
+            showRegError(data.error || 'Registration failed.');
+            return;
+          }
+
+          if (data.token) {
+            localStorage.setItem('chatToken', data.token);
+            document.cookie = 'chatToken=' + data.token + '; path=/; max-age=1296000; SameSite=Lax';
+          }
+
+          if (textEl) {
+            textEl.textContent = 'Account Created! Redirecting... ✨';
+            textEl.style.display = 'inline';
+          }
+          if (spinnerEl) spinnerEl.style.display = 'none';
+
+          window.location.href = '/index.html';
+        } catch(err) {
+          showRegError('Connection error: ' + (err.message || 'Server unreachable'));
+        } finally {
+          isRegistering = false;
+          if (btnEl) btnEl.disabled = false;
+          if (textEl && textEl.textContent.indexOf('Redirecting') === -1) textEl.style.display = 'inline';
+          if (spinnerEl) spinnerEl.style.display = 'none';
+        }
+      }
+
+      if (registerForm) {
+        registerForm.addEventListener('submit', handleRegister);
+      }
+      var regBtn = document.getElementById('regBtn');
+      if (regBtn) {
+        regBtn.addEventListener('click', function(e) {
+          handleRegister(e);
+        });
+      }
+    })();
+  </script>
 </body>
 </html>
