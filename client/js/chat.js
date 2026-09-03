@@ -249,6 +249,21 @@ async function loadMessages(before = null) {
       chatMessages.scrollTop = chatMessages.scrollHeight - prevScrollHeight;
     }
 
+    // Mark incoming unread messages as read in real-time
+    const toMarkRead = [];
+    for (const msg of messages) {
+      const isMe = (msg.senderId?._id || msg.senderId) === currentUser?._id;
+      if (!isMe && !msg.readAt) {
+        toMarkRead.push(msg._id);
+      }
+    }
+    if (toMarkRead.length > 0) {
+      unreadMessageIds.push(...toMarkRead);
+      if (!document.hidden) {
+        sendReadReceipts();
+      }
+    }
+
     // Track oldest message for pagination
     if (messages.length > 0) {
       oldestMessageId = messages[0]._id;
@@ -635,6 +650,8 @@ async function sendMessage() {
       const wrapper = chatMessages.querySelector(`[data-message-id="${clientMessageId}"]`);
       if (wrapper) {
         wrapper.dataset.messageId = response.messageId;
+        const statusEl = wrapper.querySelector('.message-status');
+        if (statusEl) statusEl.id = `status-${response.messageId}`;
         renderedMessageIds.delete(clientMessageId);
         renderedMessageIds.add(response.messageId);
       }
@@ -662,8 +679,13 @@ function onReceiveMessage(msg) {
     const optimisticEl = chatMessages.querySelector(`[data-message-id="${msg.clientMessageId}"]`);
     if (optimisticEl) {
       optimisticEl.dataset.messageId = msg._id;
+      const statusEl = optimisticEl.querySelector('.message-status');
+      if (statusEl) statusEl.id = `status-${msg._id}`;
       renderedMessageIds.delete(msg.clientMessageId);
       renderedMessageIds.add(msg._id);
+      if (msg.deliveredAt) {
+        updateMessageStatus(msg._id, msg.readAt ? 'read' : 'delivered', msg.deliveredAt);
+      }
       return;
     }
   }
@@ -699,17 +721,21 @@ function onReceiveMessage(msg) {
 
 function sendReadReceipts() {
   if (unreadMessageIds.length === 0) return;
-  const toRead = [...unreadMessageIds];
+  const toRead = [...new Set(unreadMessageIds)];
   unreadMessageIds = [];
-  window.ChatSocket.emitMessagesRead(toRead);
+  if (window.ChatSocket && window.ChatSocket.emitMessagesRead) {
+    window.ChatSocket.emitMessagesRead(toRead);
+  }
 }
 
 function setupScrollObserver() {
-  // Send read receipts when user is viewing the chat
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && unreadMessageIds.length > 0) {
-      sendReadReceipts();
-    }
+  // Send read receipts when user is viewing the chat or returns to it
+  ['visibilitychange', 'focus', 'click', 'touchstart'].forEach(evt => {
+    window.addEventListener(evt, () => {
+      if (!document.hidden && unreadMessageIds.length > 0) {
+        sendReadReceipts();
+      }
+    });
   });
 }
 
@@ -719,18 +745,31 @@ const DOUBLE_TICK_SVG = `<svg class="status-ticks-svg" viewBox="0 0 24 24" fill=
 // ─── Update Message Status ────────────────────────────────────────
 
 function updateMessageStatus(messageId, status, time) {
-  const statusEl = document.getElementById(`status-${messageId}`);
+  let statusEl = document.getElementById(`status-${messageId}`);
+  if (!statusEl) {
+    const wrapper = chatMessages.querySelector(`[data-message-id="${messageId}"]`);
+    if (wrapper) {
+      statusEl = wrapper.querySelector('.message-status');
+      if (statusEl) statusEl.id = `status-${messageId}`;
+    }
+  }
   if (!statusEl) return;
 
-  if (status === 'delivered') {
-    statusEl.className = 'message-status delivered';
-    statusEl.innerHTML = DOUBLE_TICK_SVG;
-  } else if (status === 'read') {
+  if (status === 'read') {
     statusEl.className = 'message-status read';
     statusEl.innerHTML = DOUBLE_TICK_SVG;
+  } else if (status === 'delivered') {
+    // Only upgrade to delivered if not already marked read
+    if (!statusEl.classList.contains('read')) {
+      statusEl.className = 'message-status delivered';
+      statusEl.innerHTML = DOUBLE_TICK_SVG;
+    }
   } else if (status === 'sent') {
-    statusEl.className = 'message-status sent';
-    statusEl.innerHTML = SINGLE_TICK_SVG;
+    // Only upgrade to sent if not already delivered or read
+    if (!statusEl.classList.contains('read') && !statusEl.classList.contains('delivered')) {
+      statusEl.className = 'message-status sent';
+      statusEl.innerHTML = SINGLE_TICK_SVG;
+    }
   }
 }
 

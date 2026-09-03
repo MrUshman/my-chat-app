@@ -66,6 +66,19 @@ function initSocket() {
     setTimeout(() => hideBanner(), 3000);
   });
 
+  // Re-connect immediately when mobile user returns to tab / unlocks screen
+  window.addEventListener('pageshow', () => {
+    if (socket && socket.disconnected) {
+      socket.connect();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && socket && socket.disconnected) {
+      socket.connect();
+    }
+  });
+
   // ─── Chat Events ──────────────────────────────────────────────────
 
   socket.on('receive_message', (message) => {
@@ -125,6 +138,10 @@ function initSocket() {
 
   socket.on('user_online', ({ userId }) => {
     if (window.Chat) window.Chat.setPartnerOnline(true);
+  });
+
+  socket.on('user_offline', ({ userId, lastSeen }) => {
+    if (window.Chat) window.Chat.setPartnerOnline(false, lastSeen);
   });
 
   socket.on('theme_updated', ({ theme, motion, updatedBy }) => {

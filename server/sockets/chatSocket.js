@@ -93,11 +93,14 @@ function initChatSocket(io) {
           { deliveredAt: now }
         );
 
-        // Notify sender of delivery status
-        socket.broadcast.emit('messages_delivered', {
-          messageIds: ids.map(id => id.toString()),
-          deliveredAt: now,
-        });
+        // Notify sender of delivery status across all tabs
+        const otherUser = await User.findOne({ _id: { $ne: user._id } });
+        if (otherUser) {
+          io.to(otherUser._id.toString()).emit('messages_delivered', {
+            messageIds: ids.map(id => id.toString()),
+            deliveredAt: now,
+          });
+        }
       }
     } catch (err) {
       console.error('Delivery update error:', err.message);
@@ -158,7 +161,7 @@ function initChatSocket(io) {
         if (receiverOnline) {
           io.to(otherUserId).emit('receive_message', msgObj);
 
-          socket.emit('message_delivered', {
+          io.to(userId).emit('message_delivered', {
             messageId: message._id.toString(),
             deliveredAt: now,
           });
@@ -213,7 +216,7 @@ function initChatSocket(io) {
         if (receiverOnline) {
           io.to(otherUserId).emit('receive_message', msgObj);
 
-          socket.emit('message_delivered', {
+          io.to(userId).emit('message_delivered', {
             messageId: message._id.toString(),
             deliveredAt: now,
           });
