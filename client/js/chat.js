@@ -236,17 +236,42 @@ async function loadMessages(before = null) {
 
     emptyChat.style.display = 'none';
 
-    // Save scroll position before prepending messages
-    const prevScrollHeight = chatMessages.scrollHeight;
-
-    // Render messages
-    for (const msg of messages) {
-      renderMessage(msg, before ? 'prepend' : 'append');
-    }
-
     if (before) {
-      // Maintain scroll position after prepending
-      chatMessages.scrollTop = chatMessages.scrollHeight - prevScrollHeight;
+      if (messages.length > 0) {
+        // 1. Identify the reference message currently in the chat
+        const anchorNode = chatMessages.querySelector('.message-wrapper, .date-separator');
+        const prevAnchorTop = anchorNode ? anchorNode.getBoundingClientRect().top : 0;
+
+        // 2. Build fragment of older messages in chronological order
+        const fragment = document.createDocumentFragment();
+        for (const msg of messages) {
+          renderMessage(msg, 'fragment', fragment);
+        }
+
+        if (anchorNode && anchorNode.parentNode === chatMessages) {
+          chatMessages.insertBefore(fragment, anchorNode);
+        } else {
+          chatMessages.appendChild(fragment);
+        }
+
+        // 3. WhatsApp & Messenger Scroll Pinning: Keep viewport frozen on the exact same message
+        if (anchorNode) {
+          const newAnchorTop = anchorNode.getBoundingClientRect().top;
+          const delta = newAnchorTop - prevAnchorTop;
+          chatMessages.scrollTop += delta;
+        }
+
+        // Track oldest message ID for pagination
+        oldestMessageId = messages[0]._id;
+      }
+    } else {
+      for (const msg of messages) {
+        renderMessage(msg, 'append');
+      }
+      if (messages.length > 0) {
+        oldestMessageId = messages[0]._id;
+        saveMessagesToCache(messages);
+      }
     }
 
     // Mark incoming unread messages as read in real-time
@@ -261,14 +286,6 @@ async function loadMessages(before = null) {
       unreadMessageIds.push(...toMarkRead);
       if (!document.hidden) {
         sendReadReceipts();
-      }
-    }
-
-    // Track oldest message for pagination
-    if (messages.length > 0) {
-      oldestMessageId = messages[0]._id;
-      if (!before) {
-        saveMessagesToCache(messages);
       }
     }
 
@@ -373,7 +390,7 @@ function updatePartnerInfo(user) {
 
 // ─── Render a Single Message ──────────────────────────────────────
 
-function renderMessage(msg, position = 'append') {
+function renderMessage(msg, position = 'append', container = null) {
   // Dedup check
   if (renderedMessageIds.has(msg._id)) return;
   renderedMessageIds.add(msg._id);
@@ -429,8 +446,11 @@ function renderMessage(msg, position = 'append') {
     `;
     if (position === 'append') {
       chatMessages.appendChild(wrapper);
+    } else if (position === 'fragment' && container) {
+      container.appendChild(wrapper);
     } else {
-      chatMessages.insertBefore(wrapper, loadMoreBtn.nextSibling);
+      const ref = loadMoreBtn ? loadMoreBtn.nextSibling : chatMessages.firstChild;
+      chatMessages.insertBefore(wrapper, ref);
     }
     return;
   }
@@ -503,9 +523,11 @@ function renderMessage(msg, position = 'append') {
 
   if (position === 'append') {
     chatMessages.appendChild(wrapper);
+  } else if (position === 'fragment' && container) {
+    container.appendChild(wrapper);
   } else {
     // Prepend — insert after load more button
-    const ref = loadMoreBtn.nextSibling;
+    const ref = loadMoreBtn ? loadMoreBtn.nextSibling : chatMessages.firstChild;
     chatMessages.insertBefore(wrapper, ref);
   }
 
@@ -850,7 +872,8 @@ function setupInputEvents() {
 
   logoutBtn.addEventListener('click', logout);
 
-  loadMoreBtn.addEventListener('click', () => {
+  loadMoreBtn.addEventListener('click', (e) => {
+    e.preventDefault();
     if (oldestMessageId) {
       loadMessages(oldestMessageId);
     }
@@ -1636,7 +1659,16 @@ function setReplyTarget(messageId, senderName, textSnippet) {
   if (replyPreviewText) replyPreviewText.textContent = textSnippet || 'Message';
 
   if (replyPreviewBar) replyPreviewBar.style.display = 'flex';
-  if (messageInput) messageInput.focus();
+  
+  if (messageInput) {
+    messageInput.focus();
+    // Extra focus trigger for mobile virtual keyboard
+    setTimeout(() => {
+      try {
+        messageInput.focus({ preventScroll: false });
+      } catch (_) {}
+    }, 40);
+  }
 }
 
 function cancelReplyPreview() {
@@ -1826,6 +1858,11 @@ function setupReplyListeners() {
 
       if (navigator.vibrate) navigator.vibrate(30);
       setReplyTarget(messageId, senderName, textSnippet);
+
+      // Direct synchronous focus in touchend for mobile keyboard popup
+      if (messageInput) {
+        messageInput.focus();
+      }
     }
 
     activeSwipeWrapper.style.transform = '';
