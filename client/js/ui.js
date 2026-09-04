@@ -83,10 +83,83 @@ imageModal.addEventListener('click', (e) => {
   }
 });
 
-// Close on Escape key
+// ─── Video Modal ──────────────────────────────────────────────────
+
+const videoModal = document.getElementById('videoModal');
+const videoModalPlayer = document.getElementById('videoModalPlayer');
+const videoModalClose = document.getElementById('videoModalClose');
+const videoModalDownload = document.getElementById('videoModalDownload');
+
+let currentVideoUrl = null;
+let currentVideoFilename = null;
+
+function openVideoModal(url, filename) {
+  currentVideoUrl = url;
+  currentVideoFilename = filename || 'chat-video.mp4';
+  if (videoModalPlayer) {
+    videoModalPlayer.src = url;
+    videoModalPlayer.currentTime = 0;
+    videoModalPlayer.load();
+    const p = videoModalPlayer.play();
+    if (p !== undefined) {
+      p.catch(() => {});
+    }
+  }
+  if (videoModal) {
+    videoModal.style.display = 'flex';
+    videoModal.classList.add('open');
+  }
+}
+
+function closeVideoModal() {
+  if (videoModal) {
+    videoModal.classList.remove('open');
+    videoModal.style.display = 'none';
+  }
+  if (videoModalPlayer) {
+    videoModalPlayer.pause();
+    videoModalPlayer.src = '';
+  }
+  currentVideoUrl = null;
+}
+
+window.openVideoModal = openVideoModal;
+window.closeVideoModal = closeVideoModal;
+
+if (videoModalClose) {
+  videoModalClose.addEventListener('click', closeVideoModal);
+}
+
+if (videoModalDownload) {
+  videoModalDownload.addEventListener('click', () => {
+    if (!currentVideoUrl) return;
+    const a = document.createElement('a');
+    a.href = currentVideoUrl + '?download=true';
+    a.download = currentVideoFilename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+}
+
+// Close video modal on overlay click
+if (videoModal) {
+  videoModal.addEventListener('click', (e) => {
+    if (e.target === videoModal || e.target.classList.contains('video-modal-body')) {
+      closeVideoModal();
+    }
+  });
+}
+
+// Close modals on Escape key
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && imageModal.classList.contains('open')) {
-    closeImageModal();
+  if (e.key === 'Escape') {
+    if (imageModal && imageModal.classList.contains('open')) {
+      closeImageModal();
+    }
+    if (videoModal && videoModal.classList.contains('open')) {
+      closeVideoModal();
+    }
   }
 });
 
@@ -161,6 +234,8 @@ window.UI = {
   showToast,
   openImageModal,
   closeImageModal,
+  openVideoModal,
+  closeVideoModal,
   formatTime,
   formatDateLabel,
   formatLastSeen,

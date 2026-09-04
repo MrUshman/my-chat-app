@@ -475,6 +475,26 @@ function renderMessage(msg, position = 'append', container = null) {
           </div>
         </div>`;
     }
+  } else if (msg.type === 'video') {
+    if (msg.mediaDeleted) {
+      bubbleContent = `<div class="image-expired-notice">🎥 Video expired and was deleted</div>`;
+    } else {
+      bubbleContent = `
+        <div class="video-message message-bubble" style="padding:4px;">
+          <video controls playsinline preload="metadata" src="${msg.mediaUrl}" class="chat-inline-video"
+                 onerror="this.parentElement.outerHTML='<div class=\\'image-expired-notice\\'>🎥 Video expired</div>'"></video>
+          <div class="video-action-bar">
+            <button class="video-btn-fullscreen" onclick="UI.openVideoModal('${msg.mediaUrl}', 'video.mp4')" type="button" title="Full Screen">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              <span>Expand</span>
+            </button>
+            <a class="video-btn-download" href="${msg.mediaUrl}?download=true" download="chat-video.mp4" title="Download video" aria-label="Download video">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Download</span>
+            </a>
+          </div>
+        </div>`;
+    }
   } else if (msg.type === 'audio') {
     if (msg.mediaDeleted) {
       bubbleContent = `<div class="image-expired-notice">🎙️ Voice message expired and was deleted</div>`;
@@ -503,7 +523,7 @@ function renderMessage(msg, position = 'append', container = null) {
   if (msg.replyTo) {
     const rMsg = msg.replyTo;
     const rSenderName = rMsg.senderId?.displayName || rMsg.senderId?.username || 'User';
-    const rSnippet = rMsg.deletedForEveryone ? '🚫 Message deleted' : (rMsg.text || (rMsg.type === 'image' ? '📷 Photo' : '🎙️ Voice message'));
+    const rSnippet = rMsg.deletedForEveryone ? '🚫 Message deleted' : (rMsg.text || (rMsg.type === 'image' ? '📷 Photo' : rMsg.type === 'video' ? '🎥 Video' : '🎙️ Voice message'));
     quotedCardHtml = `
       <div class="quoted-message-card" data-reply-id="${rMsg._id || ''}">
         <span class="quoted-sender-name">${escapeHtml(rSenderName)}</span>
@@ -731,7 +751,7 @@ function onReceiveMessage(msg) {
     const senderName = msg.senderId.displayName || 'Someone';
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
       const n = new Notification(`${senderName} ❤️`, {
-        body: msg.type === 'text' ? msg.text : msg.type === 'image' ? '📷 Photo' : '🎙️ Voice message',
+        body: msg.type === 'text' ? msg.text : msg.type === 'image' ? '📷 Photo' : msg.type === 'video' ? '🎥 Video' : '🎙️ Voice message',
         icon: '/favicon.ico',
       });
       setTimeout(() => n.close(), 5000);
@@ -1650,6 +1670,7 @@ function setReplyTarget(messageId, senderName, textSnippet) {
   if (!messageId) return;
 
   currentReplyTarget = { id: messageId, senderName, textSnippet };
+  window.currentReplyingMessageId = messageId;
 
   const replyPreviewBar = document.getElementById('replyPreviewBar');
   const replyPreviewTitle = document.getElementById('replyPreviewTitle');
@@ -1673,9 +1694,12 @@ function setReplyTarget(messageId, senderName, textSnippet) {
 
 function cancelReplyPreview() {
   currentReplyTarget = null;
+  window.currentReplyingMessageId = null;
   const replyPreviewBar = document.getElementById('replyPreviewBar');
   if (replyPreviewBar) replyPreviewBar.style.display = 'none';
 }
+
+window.cancelQuotedReply = cancelReplyPreview;
 
 function setupReplyListeners() {
   const cancelReplyBtn = document.getElementById('cancelReplyBtn');

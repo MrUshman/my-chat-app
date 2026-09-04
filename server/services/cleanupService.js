@@ -47,7 +47,7 @@ async function runCleanup() {
 
     // 2. Also clean up any earlier expired media messages (expiresAt <= now)
     const expiredMessages = await Message.find({
-      type: { $in: ['image', 'audio'] },
+      type: { $in: ['image', 'audio', 'video'] },
       expiresAt: { $lte: now },
       mediaDeleted: false,
       mediaStorageKey: { $ne: null },

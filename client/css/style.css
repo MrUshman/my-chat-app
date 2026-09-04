@@ -1057,11 +1057,10 @@ body.keyboard-open .chat-input-area {
   filter: drop-shadow(0 0 5px rgba(37, 211, 102, 0.6)) !important;
 }
 
-/* Sent Photo Bubble Styling (WhatsApp / Telegram Standard Dimensions) */
-.image-message {
+/* Sent Photo & Video Bubble Styling (WhatsApp / Telegram Standard Dimensions) */
+.image-message, .video-message {
   position: relative;
-  max-width: 260px !important;
-  max-height: 260px !important;
+  max-width: min(270px, 75vw) !important;
   width: fit-content;
   border-radius: 16px !important;
   overflow: hidden !important;
@@ -1070,18 +1069,67 @@ body.keyboard-open .chat-input-area {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.image-message:hover {
+.image-message:hover, .video-message:hover {
   transform: scale(1.02);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
 .image-message img {
   width: 100% !important;
-  max-width: 252px !important;
-  max-height: 252px !important;
+  max-width: 260px !important;
+  max-height: 260px !important;
   object-fit: cover !important;
   border-radius: 12px !important;
   display: block !important;
+}
+
+.chat-inline-video {
+  width: 100% !important;
+  max-width: 270px !important;
+  max-height: 280px !important;
+  border-radius: 12px !important;
+  display: block !important;
+  background: #000000;
+  outline: none;
+  cursor: pointer;
+}
+
+.video-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 4px 2px;
+  width: 100%;
+}
+
+.video-btn-fullscreen, .video-btn-download {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 4px 10px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  transition: all 0.2s ease !important;
+}
+
+.video-btn-fullscreen:hover, .video-btn-download:hover {
+  background: rgba(139, 92, 246, 0.35) !important;
+  border-color: rgba(139, 92, 246, 0.6) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) !important;
+}
+
+.video-btn-fullscreen:active, .video-btn-download:active {
+  transform: scale(0.96) !important;
 }
 
 .image-overlay-badge {
@@ -1460,7 +1508,7 @@ body.keyboard-open .chat-input-area {
   position: relative !important;
 }
 
-.photo-preview-img, #photoPreviewImg {
+.photo-preview-img, #photoPreviewImg, .video-preview-player, #videoPreviewPlayer {
   width: 52px !important;
   height: 52px !important;
   max-width: 52px !important;
@@ -1468,6 +1516,7 @@ body.keyboard-open .chat-input-area {
   object-fit: cover !important;
   border-radius: 12px !important;
   display: block !important;
+  background: #000000;
 }
 
 .photo-preview-actions {
@@ -1713,7 +1762,7 @@ body.keyboard-open .chat-input-area {
   padding: 10px;
 }
 
-#imageModalImg {
+#imageModalImg, #videoModalPlayer, .video-modal-video {
   max-width: 94vw !important;
   max-height: 85vh !important;
   width: auto !important;
@@ -1722,6 +1771,8 @@ body.keyboard-open .chat-input-area {
   border-radius: 16px !important;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(124, 58, 237, 0.3) !important;
   animation: zoomIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  background: #000000;
+  outline: none;
 }
 
 @keyframes zoomIn {

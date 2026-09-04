@@ -11,6 +11,7 @@ const photoBtn = document.getElementById('photoBtn');
 const photoInput = document.getElementById('photoInput');
 const photoPreviewContainer = document.getElementById('photoPreviewContainer');
 const photoPreviewImg = document.getElementById('photoPreviewImg');
+const videoPreviewPlayer = document.getElementById('videoPreviewPlayer');
 const photoCancel = document.getElementById('photoCancel');
 const photoSend = document.getElementById('photoSend');
 
@@ -27,7 +28,10 @@ const voicePreviewCancel = document.getElementById('voicePreviewCancel');
 const voicePreviewSend = document.getElementById('voicePreviewSend');
 
 // ─── State ────────────────────────────────────────────────────────
-let selectedPhotoFile = null;
+let selectedMediaFile = null;
+let mediaType = null; // 'image' | 'video'
+let mediaDuration = null;
+let videoBlobUrl = null;
 let mediaRecorder = null;
 let audioChunks = [];
 let recordingInterval = null;
@@ -37,7 +41,7 @@ let previewAudio = null;
 let isUploading = false;
 
 // ═══════════════════════════════════════════════════════════════════
-// PHOTO HANDLING
+// PHOTO & VIDEO HANDLING (50 MB MAX)
 // ═══════════════════════════════════════════════════════════════════
 
 photoBtn.addEventListener('click', () => {
@@ -49,58 +53,113 @@ photoInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  // Validate MIME type
-  const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-  if (!allowed.includes(file.type)) {
-    UI.showToast('Only JPG, PNG, and WEBP images are allowed.', 'error');
+  const isImage = file.type.startsWith('image/');
+  const isVideo = file.type.startsWith('video/') ||
+    ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska', 'video/3gpp', 'video/ogg'].includes(file.type);
+
+  if (!isImage && !isVideo) {
+    UI.showToast('Please select a valid photo or video file.', 'error');
     photoInput.value = '';
     return;
   }
 
-  // Validate size (10MB max)
-  const maxMB = 10;
+  // Validate size (50MB max)
+  const maxMB = 50;
   if (file.size > maxMB * 1024 * 1024) {
-    UI.showToast(`Image too large. Max ${maxMB}MB.`, 'error');
+    UI.showToast(`File too large. Maximum allowed size is ${maxMB}MB.`, 'error');
     photoInput.value = '';
     return;
   }
 
-  selectedPhotoFile = file;
+  selectedMediaFile = file;
+  mediaType = isVideo ? 'video' : 'image';
+  mediaDuration = null;
+
+  if (videoBlobUrl) {
+    URL.revokeObjectURL(videoBlobUrl);
+    videoBlobUrl = null;
+  }
+
+  if (isVideo) {
+    videoBlobUrl = URL.createObjectURL(file);
+    if (photoPreviewImg) photoPreviewImg.style.display = 'none';
+    if (videoPreviewPlayer) {
+      videoPreviewPlayer.src = videoBlobUrl;
+      videoPreviewPlayer.style.display = 'block';
+      videoPreviewPlayer.onloadedmetadata = () => {
+        mediaDuration = videoPreviewPlayer.duration;
+      };
+    }
+    photoSend.textContent = 'Send Video 🎥';
+  } else {
+    if (videoPreviewPlayer) {
+      videoPreviewPlayer.pause();
+      videoPreviewPlayer.src = '';
+      videoPreviewPlayer.style.display = 'none';
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (photoPreviewImg) {
+        photoPreviewImg.src = ev.target.result;
+        photoPreviewImg.style.display = 'block';
+      }
+    };
+    reader.readAsDataURL(file);
+    photoSend.textContent = 'Send Photo ❤️';
+  }
 
   // Show preview and hide input row
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    photoPreviewImg.src = ev.target.result;
-    photoPreviewContainer.classList.add('active');
-    const inputRowEl = document.querySelector('.input-row');
-    if (inputRowEl) inputRowEl.style.display = 'none';
-  };
-  reader.readAsDataURL(file);
+  photoPreviewContainer.classList.add('active');
+  const inputRowEl = document.querySelector('.input-row');
+  if (inputRowEl) inputRowEl.style.display = 'none';
 });
 
 photoCancel.addEventListener('click', cancelPhotoSelection);
 
 function cancelPhotoSelection() {
-  selectedPhotoFile = null;
+  selectedMediaFile = null;
+  mediaType = null;
+  mediaDuration = null;
   photoInput.value = '';
-  photoPreviewImg.src = '';
+  if (photoPreviewImg) {
+    photoPreviewImg.src = '';
+    photoPreviewImg.style.display = 'none';
+  }
+  if (videoPreviewPlayer) {
+    videoPreviewPlayer.pause();
+    videoPreviewPlayer.src = '';
+    videoPreviewPlayer.style.display = 'none';
+  }
+  if (videoBlobUrl) {
+    URL.revokeObjectURL(videoBlobUrl);
+    videoBlobUrl = null;
+  }
   photoPreviewContainer.classList.remove('active');
   const inputRowEl = document.querySelector('.input-row');
   if (inputRowEl) inputRowEl.style.display = 'flex';
 }
 
-photoSend.addEventListener('click', uploadAndSendPhoto);
+photoSend.addEventListener('click', uploadAndSendMedia);
 
-async function uploadAndSendPhoto() {
-  if (!selectedPhotoFile || isUploading) return;
+async function uploadAndSendMedia() {
+  if (!selectedMediaFile || isUploading) return;
 
+  const currentType = mediaType;
   isUploading = true;
   photoSend.disabled = true;
-  photoSend.textContent = 'Sending...';
+  photoSend.textContent = currentType === 'video' ? 'Uploading Video...' : 'Uploading Photo...';
 
   try {
     const formData = new FormData();
-    formData.append('file', selectedPhotoFile);
+    formData.append('file', selectedMediaFile);
+    if (mediaDuration) {
+      formData.append('duration', String(mediaDuration));
+    }
+
+    // Attach replyTo ID if currently replying
+    if (window.currentReplyingMessageId) {
+      formData.append('replyTo', window.currentReplyingMessageId);
+    }
 
     const headers = typeof window.getAuthHeaders === 'function' ? window.getAuthHeaders() : {};
     const res = await fetch('/api/media/upload', {
@@ -122,15 +181,20 @@ async function uploadAndSendPhoto() {
       window.ChatSocket.sendMediaMessage(data.message._id);
     }
 
+    // Reset reply bar if open
+    if (typeof window.cancelQuotedReply === 'function') {
+      window.cancelQuotedReply();
+    }
+
     cancelPhotoSelection();
-    UI.showToast('Photo sent!', 'success');
+    UI.showToast(currentType === 'video' ? '🎥 Video sent!' : '📷 Photo sent!', 'success');
   } catch (err) {
     UI.showToast('Upload failed. Check your connection.', 'error');
-    console.error('Photo upload error:', err);
+    console.error('Media upload error:', err);
   } finally {
     isUploading = false;
     photoSend.disabled = false;
-    photoSend.textContent = 'Send Photo ❤️';
+    photoSend.textContent = 'Send Media ❤️';
   }
 }
 

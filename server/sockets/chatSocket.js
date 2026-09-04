@@ -191,7 +191,12 @@ function initChatSocket(io) {
           senderId: user._id,
         })
           .populate('senderId', 'username displayName profileImage')
-          .populate('receiverId', 'username displayName profileImage');
+          .populate('receiverId', 'username displayName profileImage')
+          .populate({
+            path: 'replyTo',
+            select: 'text type mediaUrl senderId deletedForEveryone',
+            populate: { path: 'senderId', select: 'displayName username' },
+          });
 
         if (!message) {
           return ack?.({ error: 'Message not found.' });

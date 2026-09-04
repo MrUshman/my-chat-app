@@ -6,7 +6,7 @@ const fs = require('fs');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
-const { upload, isImageMime, isAudioMime } = require('../middleware/upload');
+const { upload, isImageMime, isAudioMime, isVideoMime } = require('../middleware/upload');
 const { saveFile, getLocalFilePath, isCloudinary } = require('../services/storageService');
 
 const router = express.Router();
@@ -18,6 +18,9 @@ function getExpiresAt(type) {
     hours = parseInt(process.env.PHOTO_EXPIRY_HOURS) || 24;
   } else if (type === 'audio') {
     hours = parseInt(process.env.VOICE_EXPIRY_HOURS) || 24;
+  } else if (type === 'video') {
+    // 12 hours auto-delete for videos
+    hours = parseInt(process.env.VIDEO_EXPIRY_HOURS) || 12;
   }
 
   if (hours === 0) return null; // Never expire
@@ -27,7 +30,7 @@ function getExpiresAt(type) {
   return expiresAt;
 }
 
-// POST /api/media/upload — upload image or audio file
+// POST /api/media/upload — upload image, audio, or video file
 router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -43,6 +46,8 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       messageType = 'image';
     } else if (isAudioMime(mimeType)) {
       messageType = 'audio';
+    } else if (isVideoMime(mimeType)) {
+      messageType = 'video';
     } else {
       return res.status(400).json({ error: 'Unsupported file type.' });
     }
@@ -59,7 +64,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     // Calculate expiration
     const expiresAt = getExpiresAt(messageType);
 
-    // Parse duration from request (for audio)
+    // Parse duration from request (for audio or video)
     const duration = req.body.duration ? parseFloat(req.body.duration) : null;
 
     // Create message record in MongoDB
@@ -76,9 +81,16 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       replyTo: req.body.replyTo || null,
     });
 
-    // Populate sender info for socket broadcast
+    // Populate sender & receiver info for socket broadcast
     await message.populate('senderId', 'username displayName profileImage');
     await message.populate('receiverId', 'username displayName profileImage');
+    if (message.replyTo) {
+      await message.populate({
+        path: 'replyTo',
+        select: 'text type mediaUrl senderId deletedForEveryone',
+        populate: { path: 'senderId', select: 'displayName username' },
+      });
+    }
 
     res.json({
       success: true,
@@ -90,7 +102,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     // Handle multer errors
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
-        error: `File too large. Maximum size is ${process.env.MAX_FILE_SIZE_MB || 10}MB.`,
+        error: `File too large. Maximum size is ${process.env.MAX_FILE_SIZE_MB || 50}MB.`,
       });
     }
 
@@ -130,34 +142,64 @@ router.get('/:filename', async (req, res) => {
       png: 'image/png',
       webp: 'image/webp',
       weba: 'audio/webm',
-      webm: 'audio/webm',
-      ogg: 'audio/ogg',
+      webm: 'video/webm',
+      ogg: 'video/ogg',
       mp3: 'audio/mpeg',
-      mp4: 'audio/mp4',
+      mp4: 'video/mp4',
+      mov: 'video/quicktime',
+      mkv: 'video/x-matroska',
+      '3gp': 'video/3gpp',
       m4a: 'audio/mp4',
       wav: 'audio/wav',
-      bin: 'audio/webm',
+      bin: 'video/mp4',
     };
     
-    const contentType = mimeTypes[ext] || 'audio/webm';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
 
-    // Handle attachment download query
-    if (req.query.download === 'true') {
-      res.setHeader('Content-Disposition', `attachment; filename="media.${ext}"`);
-    }
+    // Serve file with full HTTP 206 Byte-Range streaming for smooth video/audio playback
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
 
-    res.sendFile(filePath, {
-      headers: {
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes'
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (isNaN(start) || start >= fileSize) {
+        res.status(416).set('Content-Range', `bytes */${fileSize}`).send('Requested range not satisfiable');
+        return;
       }
-    });
+
+      const chunkSize = end - start + 1;
+      const fileStream = fs.createReadStream(filePath, { start, end });
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600',
+        ...(req.query.download === 'true' ? { 'Content-Disposition': `attachment; filename="media.${ext}"` } : {}),
+      });
+
+      fileStream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=3600',
+        ...(req.query.download === 'true' ? { 'Content-Disposition': `attachment; filename="media.${ext}"` } : {}),
+      });
+
+      fs.createReadStream(filePath).pipe(res);
+    }
   } catch (err) {
     console.error('Media serve error:', err.message);
-    res.status(500).json({ error: 'Failed to serve file.' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to serve file.' });
+    }
   }
 });
 
