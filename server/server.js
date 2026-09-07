@@ -116,10 +116,12 @@ const io = new Server(server, {
     credentials: true,
     methods: ['GET', 'POST'],
   },
-  // Reconnection settings
-  pingTimeout: 30000,
-  pingInterval: 25000,
+  // Fast disconnect detection for mobile / desktop
+  pingTimeout: 10000,
+  pingInterval: 10000,
 });
+
+app.set('io', io);
 
 // Apply auth middleware to all socket connections
 io.use(requireAuthSocket);

@@ -31,10 +31,28 @@ function unregisterUser(userId, socketId) {
   }
 }
 
-function isUserOnline(userId) {
+function isUserOnline(userId, ioInstance) {
   if (!userId) return false;
   const uid = userId.toString();
-  return onlineUsers.has(uid) && onlineUsers.get(uid).size > 0;
+  if (!onlineUsers.has(uid)) return false;
+
+  const socketSet = onlineUsers.get(uid);
+
+  // Validate that registered sockets are ACTUALLY live in Socket.IO
+  if (ioInstance && ioInstance.sockets && ioInstance.sockets.sockets) {
+    for (const sid of Array.from(socketSet)) {
+      const liveSocket = ioInstance.sockets.sockets.get(sid);
+      if (!liveSocket || !liveSocket.connected) {
+        socketSet.delete(sid);
+      }
+    }
+  }
+
+  if (socketSet.size === 0) {
+    onlineUsers.delete(uid);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -60,7 +78,7 @@ function initChatSocket(io) {
     try {
       const partner = await User.findOne({ _id: { $ne: user._id } }).select('username displayName profileImage lastSeen');
       if (partner) {
-        const partnerOnline = isUserOnline(partner._id.toString());
+        const partnerOnline = isUserOnline(partner._id.toString(), io);
         socket.emit('partner_status', {
           partner: partner.toSafeObject(),
           isOnline: partnerOnline,
@@ -129,7 +147,7 @@ function initChatSocket(io) {
 
         const otherUserId = otherUser._id.toString();
         const now = new Date();
-        const receiverOnline = isUserOnline(otherUserId);
+        const receiverOnline = isUserOnline(otherUserId, io);
 
         // Save to MongoDB
         const message = await Message.create({
@@ -204,7 +222,7 @@ function initChatSocket(io) {
 
         const otherUserId = message.receiverId._id.toString();
         const now = new Date();
-        const receiverOnline = isUserOnline(otherUserId);
+        const receiverOnline = isUserOnline(otherUserId, io);
 
         // Update delivered status if receiver is online
         if (receiverOnline) {
@@ -296,6 +314,7 @@ function initChatSocket(io) {
         if (receiverId) io.to(receiverId.toString()).emit('message_deleted', { messageId, type: 'everyone' });
       }
     });
+
     socket.on('update_profile', async () => {
       try {
         const updatedUser = await User.findById(user._id).select('username displayName profileImage lastSeen');
@@ -334,14 +353,26 @@ function initChatSocket(io) {
       }
     });
 
+    // ─── Explicit Client Offline Event (on tab close/hide) ───────────────────
+    socket.on('client_offline', async () => {
+      unregisterUser(userId, socket.id);
+      if (!isUserOnline(userId, io)) {
+        const lastSeen = new Date();
+        try {
+          await User.findByIdAndUpdate(user._id, { lastSeen });
+        } catch (e) {}
+        socket.broadcast.emit('user_offline', { userId, lastSeen });
+      }
+    });
+
     // ─── Disconnect ───────────────────────────────────────────────────────────
-    socket.on('disconnect', async () => {
-      console.log(`🔌 ${user.displayName} disconnected [${socket.id}]`);
+    socket.on('disconnect', async (reason) => {
+      console.log(`🔌 ${user.displayName} disconnected [${socket.id}] Reason: ${reason}`);
 
       unregisterUser(userId, socket.id);
 
-      // Only broadcast offline if user has no more active sockets
-      if (!isUserOnline(userId)) {
+      // Only broadcast offline if user has no more active live sockets
+      if (!isUserOnline(userId, io)) {
         const lastSeen = new Date();
 
         try {
@@ -359,4 +390,4 @@ function initChatSocket(io) {
   });
 }
 
-module.exports = { initChatSocket };
+module.exports = { initChatSocket, isUserOnline, onlineUsers };

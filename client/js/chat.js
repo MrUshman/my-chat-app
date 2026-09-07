@@ -126,7 +126,7 @@ async function init() {
       return;
     }
 
-    const { user, partner: partnerUser } = await authRes.json();
+    const { user, partner: partnerUser, partnerOnline } = await authRes.json();
     currentUser = user;
     localStorage.setItem('cached_user', JSON.stringify(user));
     updateMyProfileUI();
@@ -141,6 +141,7 @@ async function init() {
     if (partnerUser) {
       updatePartnerInfo(partnerUser);
       localStorage.setItem('cached_partner', JSON.stringify(partnerUser));
+      setPartnerOnline(Boolean(partnerOnline), partnerUser.lastSeen);
     }
 
     // Sync messages
@@ -817,35 +818,103 @@ function updateMessageStatus(messageId, status, time) {
 
 // ─── Online/Offline Status ────────────────────────────────────────
 
+let isPartnerOnline = false;
+let isPartnerTyping = false;
+let partnerLastSeenDate = null;
+
 function setPartnerOnline(online, lastSeen = null) {
-  if (online) {
-    statusDot.classList.add('online');
-    statusText.textContent = 'Online';
-    statusText.classList.add('online');
+  isPartnerOnline = Boolean(online);
+  if (lastSeen) {
+    partnerLastSeenDate = new Date(lastSeen);
+  }
+
+  // If partner is currently typing, keep the typing... indicator visible
+  if (isPartnerTyping) {
+    return;
+  }
+
+  if (isPartnerOnline) {
+    if (statusDot) {
+      statusDot.classList.add('online');
+      statusDot.classList.remove('typing');
+    }
+    if (statusText) {
+      statusText.textContent = 'Online';
+      statusText.classList.add('online');
+      statusText.classList.remove('typing');
+    }
   } else {
-    statusDot.classList.remove('online');
-    statusText.textContent = UI.formatLastSeen(lastSeen);
-    statusText.classList.remove('online');
+    if (statusDot) {
+      statusDot.classList.remove('online');
+      statusDot.classList.remove('typing');
+    }
+    if (statusText) {
+      statusText.textContent = UI.formatLastSeen(partnerLastSeenDate);
+      statusText.classList.remove('online');
+      statusText.classList.remove('typing');
+    }
   }
 }
 
-// ─── Typing Indicator ─────────────────────────────────────────────
+// Keep the "Last seen Xm ago" updated dynamically every 30s
+setInterval(() => {
+  if (!isPartnerTyping && !isPartnerOnline && partnerLastSeenDate && statusText) {
+    statusText.textContent = UI.formatLastSeen(partnerLastSeenDate);
+  }
+}, 30000);
+
+// ─── Typing Indicator (WhatsApp Style Header & Bubble) ─────────────
 
 function showTyping(displayName) {
-  typingText.textContent = `${displayName} is typing...`;
-  typingIndicator.classList.add('visible');
+  isPartnerTyping = true;
+  if (statusText) {
+    statusText.textContent = 'typing...';
+    statusText.classList.add('typing');
+    statusText.classList.add('online');
+  }
+  if (statusDot) {
+    statusDot.classList.add('online');
+    statusDot.classList.add('typing');
+  }
+  if (typingText) {
+    typingText.textContent = `${displayName || 'Partner'} is typing...`;
+  }
+  if (typingIndicator) {
+    typingIndicator.classList.add('visible');
+  }
   scrollToBottom();
 }
 
 function hideTyping() {
-  typingIndicator.classList.remove('visible');
+  isPartnerTyping = false;
+  if (statusText) {
+    statusText.classList.remove('typing');
+    if (isPartnerOnline) {
+      statusText.textContent = 'Online';
+      statusText.classList.add('online');
+    } else {
+      statusText.textContent = UI.formatLastSeen(partnerLastSeenDate);
+      statusText.classList.remove('online');
+    }
+  }
+  if (statusDot) {
+    statusDot.classList.remove('typing');
+    if (isPartnerOnline) {
+      statusDot.classList.add('online');
+    } else {
+      statusDot.classList.remove('online');
+    }
+  }
+  if (typingIndicator) {
+    typingIndicator.classList.remove('visible');
+  }
 }
 
 // ─── Input Events ─────────────────────────────────────────────────
 
 function setupInputEvents() {
   // Auto-resize textarea & immediate send button toggle across all input/key/composition events
-  ['input', 'beforeinput', 'keyup', 'keydown', 'change', 'paste', 'cut', 'focus', 'compositionstart', 'compositionupdate', 'compositionend'].forEach(evt => {
+  ['input', 'beforeinput', 'keyup', 'keydown', 'change', 'paste', 'cut', 'compositionstart', 'compositionupdate', 'compositionend'].forEach(evt => {
     messageInput.addEventListener(evt, () => {
       UI.autoResize(messageInput);
       updateSendButton();
@@ -871,19 +940,26 @@ function setupInputEvents() {
     sendMessage();
   });
 
-  // Mobile Keyboard gap & viewport adjustment
+  // Instant Typing Start when keyboard opens (focus or touch)
   messageInput.addEventListener('focus', () => {
     document.body.classList.add('keyboard-open');
     const inputArea = document.getElementById('chatInputArea');
     if (inputArea) inputArea.classList.add('keyboard-open');
     updateSendButton();
+    handleTyping();
     setTimeout(() => scrollToBottom(false), 200);
   });
 
+  messageInput.addEventListener('touchstart', () => {
+    handleTyping();
+  }, { passive: true });
+
+  // Instant Typing Stop when keyboard closes (blur)
   messageInput.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-open');
     const inputArea = document.getElementById('chatInputArea');
     if (inputArea) inputArea.classList.remove('keyboard-open');
+    stopTyping();
     setTimeout(updateSendButton, 120);
   });
 
@@ -1666,6 +1742,33 @@ async function executeBulkDelete(type) {
 let currentReplyTarget = null;
 let contextMenuTargetWrapper = null;
 
+function focusMessageInputForReply() {
+  if (!messageInput) return;
+  try {
+    messageInput.removeAttribute('readonly');
+    messageInput.disabled = false;
+    messageInput.focus();
+    const len = messageInput.value.length;
+    messageInput.setSelectionRange(len, len);
+  } catch (_) {}
+
+  try {
+    messageInput.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  } catch (_) {}
+
+  // Trigger live typing indicator
+  if (typeof startTyping === 'function') {
+    startTyping();
+  }
+
+  // Backup micro-trigger for stubborn virtual keyboards
+  setTimeout(() => {
+    try {
+      messageInput.focus();
+    } catch (_) {}
+  }, 40);
+}
+
 function setReplyTarget(messageId, senderName, textSnippet) {
   if (!messageId) return;
 
@@ -1681,15 +1784,7 @@ function setReplyTarget(messageId, senderName, textSnippet) {
 
   if (replyPreviewBar) replyPreviewBar.style.display = 'flex';
   
-  if (messageInput) {
-    messageInput.focus();
-    // Extra focus trigger for mobile virtual keyboard
-    setTimeout(() => {
-      try {
-        messageInput.focus({ preventScroll: false });
-      } catch (_) {}
-    }, 40);
-  }
+  focusMessageInputForReply();
 }
 
 function cancelReplyPreview() {
@@ -1751,10 +1846,13 @@ function setupReplyListeners() {
     }
   });
 
-  // Mobile Long-Press (Press & Hold for 450ms opens Context Menu ONLY)
+  // Touch Gesture Handling: Long-Press for Context Menu + Fast/Slow Swipe-to-Reply
   let longPressTimer = null;
   let touchStartX = 0;
   let touchStartY = 0;
+  let activeSwipeWrapper = null;
+  let isHorizontalSwipe = false;
+  let swipeDeltaX = 0;
 
   chatMessages?.addEventListener('touchstart', (e) => {
     if (isSelectionMode) return;
@@ -1766,36 +1864,84 @@ function setupReplyListeners() {
     const touch = e.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
+    activeSwipeWrapper = wrapper;
+    isHorizontalSwipe = false;
+    swipeDeltaX = 0;
 
     longPressTimer = setTimeout(() => {
       if (window.getSelection) window.getSelection().removeAllRanges();
       if (navigator.vibrate) navigator.vibrate(40);
       showContextMenu(wrapper, touchStartX, touchStartY);
+      activeSwipeWrapper = null;
     }, 450);
   }, { passive: true });
 
   chatMessages?.addEventListener('touchmove', (e) => {
-    if (!longPressTimer) return;
+    if (!activeSwipeWrapper) return;
     const touch = e.touches[0];
-    if (Math.abs(touch.clientX - touchStartX) > 10 || Math.abs(touch.clientY - touchStartY) > 10) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+    const dx = touch.clientX - touchStartX;
+    const dy = touch.clientY - touchStartY;
+
+    // Movement cancels long-press context menu
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    }
+
+    // Determine swipe vs scroll
+    if (!isHorizontalSwipe) {
+      if (dx > 8 && Math.abs(dx) > Math.abs(dy)) {
+        isHorizontalSwipe = true;
+      } else if (Math.abs(dy) > 12) {
+        // User is scrolling vertically
+        activeSwipeWrapper = null;
+        return;
+      }
+    }
+
+    if (isHorizontalSwipe && dx > 0) {
+      swipeDeltaX = dx;
+      const visualX = Math.min(dx * 0.7, 75);
+      activeSwipeWrapper.style.transform = `translateX(${visualX}px)`;
+      activeSwipeWrapper.classList.add('swiping');
     }
   }, { passive: true });
 
-  chatMessages?.addEventListener('touchend', () => {
+  function handleSwipeEnd() {
     if (longPressTimer) {
       clearTimeout(longPressTimer);
       longPressTimer = null;
     }
-  });
 
-  chatMessages?.addEventListener('touchcancel', () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+    if (activeSwipeWrapper) {
+      const wrapper = activeSwipeWrapper;
+      const triggered = isHorizontalSwipe && swipeDeltaX >= 35;
+
+      if (triggered) {
+        const messageId = wrapper.dataset.messageId;
+        const isMe = wrapper.dataset.sender === 'me';
+        const senderName = isMe ? 'You' : (partner?.displayName || partner?.username || 'Partner');
+        const bubble = wrapper.querySelector('.message-bubble');
+        const textSnippet = bubble ? bubble.textContent.trim() : 'Message';
+
+        if (navigator.vibrate) navigator.vibrate(30);
+        setReplyTarget(messageId, senderName, textSnippet);
+        focusMessageInputForReply();
+      }
+
+      wrapper.classList.remove('swiping');
+      wrapper.style.transform = '';
     }
-  });
+
+    activeSwipeWrapper = null;
+    isHorizontalSwipe = false;
+    swipeDeltaX = 0;
+  }
+
+  chatMessages?.addEventListener('touchend', handleSwipeEnd, { passive: true });
+  chatMessages?.addEventListener('touchcancel', handleSwipeEnd, { passive: true });
 
   ctxReplyBtn?.addEventListener('click', () => {
     if (!contextMenuTargetWrapper) return;
@@ -1837,62 +1983,6 @@ function setupReplyListeners() {
     const isMe = contextMenuTargetWrapper.dataset.sender === 'me';
     if (msgContextMenu) msgContextMenu.style.display = 'none';
     openDeleteModal(messageId, isMe);
-  });
-
-  // Touch Drag-Right (Swipe-to-Reply)
-  let swipeStartX = 0;
-  let swipeStartY = 0;
-  let activeSwipeWrapper = null;
-  let currentDeltaX = 0;
-
-  chatMessages?.addEventListener('touchstart', (e) => {
-    if (isSelectionMode) return;
-    const wrapper = e.target.closest('.message-wrapper');
-    if (!wrapper) return;
-
-    activeSwipeWrapper = wrapper;
-    const touch = e.touches[0];
-    swipeStartX = touch.clientX;
-    swipeStartY = touch.clientY;
-    currentDeltaX = 0;
-  }, { passive: true });
-
-  chatMessages?.addEventListener('touchmove', (e) => {
-    if (!activeSwipeWrapper) return;
-    const touch = e.touches[0];
-    const deltaX = touch.clientX - swipeStartX;
-    const deltaY = touch.clientY - swipeStartY;
-
-    if (deltaX > 0 && deltaX < 85 && Math.abs(deltaY) < 30) {
-      currentDeltaX = deltaX;
-      activeSwipeWrapper.style.transform = `translateX(${deltaX}px)`;
-      activeSwipeWrapper.classList.add('swiping');
-    }
-  }, { passive: true });
-
-  chatMessages?.addEventListener('touchend', () => {
-    if (!activeSwipeWrapper) return;
-
-    if (currentDeltaX > 40) {
-      const messageId = activeSwipeWrapper.dataset.messageId;
-      const isMe = activeSwipeWrapper.dataset.sender === 'me';
-      const senderName = isMe ? 'You' : (partner?.displayName || partner?.username || 'Partner');
-      const bubble = activeSwipeWrapper.querySelector('.message-bubble');
-      const textSnippet = bubble ? bubble.textContent.trim() : 'Message';
-
-      if (navigator.vibrate) navigator.vibrate(30);
-      setReplyTarget(messageId, senderName, textSnippet);
-
-      // Direct synchronous focus in touchend for mobile keyboard popup
-      if (messageInput) {
-        messageInput.focus();
-      }
-    }
-
-    activeSwipeWrapper.style.transform = '';
-    activeSwipeWrapper.classList.remove('swiping');
-    activeSwipeWrapper = null;
-    currentDeltaX = 0;
   });
 }
 

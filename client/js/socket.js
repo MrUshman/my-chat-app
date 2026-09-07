@@ -66,6 +66,23 @@ function initSocket() {
     setTimeout(() => hideBanner(), 3000);
   });
 
+  // ─── Lifecycle & Tab Visibility Management ──────────────────────
+
+  // Disconnect cleanly when user closes tab or navigates away
+  window.addEventListener('beforeunload', () => {
+    if (socket && socket.connected) {
+      try { socket.emit('client_offline'); } catch(e) {}
+      socket.disconnect();
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    if (socket && socket.connected) {
+      try { socket.emit('client_offline'); } catch(e) {}
+      socket.disconnect();
+    }
+  });
+
   // Re-connect immediately when mobile user returns to tab / unlocks screen
   window.addEventListener('pageshow', () => {
     if (socket && socket.disconnected) {
@@ -74,8 +91,10 @@ function initSocket() {
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && socket && socket.disconnected) {
-      socket.connect();
+    if (document.visibilityState === 'visible') {
+      if (socket && socket.disconnected) {
+        socket.connect();
+      }
     }
   });
 

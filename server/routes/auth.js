@@ -138,22 +138,28 @@ router.post('/logout', requireAuth, async (req, res) => {
   }
 });
 
+const { isUserOnline } = require('../sockets/chatSocket');
+
 // GET /api/auth/me — check if currently logged in and fetch partner in single fast query
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const partner = await User.findOne({ _id: { $ne: req.user._id } })
       .select('username displayName profileImage lastSeen')
       .lean();
+
+    const io = req.app.get('io');
+    const partnerOnline = partner ? isUserOnline(partner._id.toString(), io) : false;
+
     res.json({
       user: req.user,
       partner: partner || null,
+      partnerOnline,
     });
   } catch (err) {
-    res.json({ user: req.user, partner: null });
+    res.json({ user: req.user, partner: null, partnerOnline: false });
   }
 });
 
-// GET /api/auth/partner — get partner user info
 // GET /api/auth/partner — get partner user info
 router.get('/partner', requireAuth, async (req, res) => {
   try {
@@ -163,7 +169,11 @@ router.get('/partner', requireAuth, async (req, res) => {
     if (!partner) {
       return res.status(404).json({ error: 'Partner not found' });
     }
-    res.json({ partner });
+
+    const io = req.app.get('io');
+    const partnerOnline = isUserOnline(partner._id.toString(), io);
+
+    res.json({ partner, partnerOnline });
   } catch (err) {
     console.error('Get partner error:', err.message);
     res.status(500).json({ error: 'Failed to fetch partner' });
