@@ -638,60 +638,23 @@ body.motion-bubbles::before {
   text-transform: capitalize;
 }
 
-/* WhatsApp-Style Modern Floating Pill for Loading Older Messages */
-.load-more-btn {
-  align-self: center;
-  margin: 6px auto 14px;
-  padding: 6px 18px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(28, 22, 50, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  color: rgba(255, 255, 255, 0.82);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
+/* WhatsApp/Instagram Style Infinite Scroll Top Spinner */
+.top-loading-spinner {
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  user-select: none;
-  -webkit-user-select: none;
+  justify-content: center;
+  padding: 10px 0 14px;
+  width: 100%;
+  animation: fadeIn 0.2s ease;
 }
 
-.load-more-btn:hover {
-  background: rgba(139, 92, 246, 0.25);
-  border-color: rgba(139, 92, 246, 0.5);
-  color: #ffffff;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.35);
-}
-
-.load-more-btn:active {
-  transform: scale(0.96);
-}
-
-.load-more-btn .load-more-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  transition: transform 0.3s ease;
-}
-
-.load-more-btn:hover .load-more-icon {
-  transform: rotate(-45deg);
-}
-
-.load-more-btn.loading {
-  opacity: 0.75;
-  pointer-events: none;
-}
-
-.load-more-btn.loading .load-more-icon {
-  animation: spinReload 0.8s linear infinite;
+.chat-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--accent-primary, #a855f7);
+  border-radius: 50%;
+  animation: spinReload 0.7s linear infinite;
 }
 
 @keyframes spinReload {

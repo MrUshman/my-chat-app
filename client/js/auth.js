@@ -143,9 +143,18 @@ function setupAuthForms() {
           return;
         }
 
+        // Clear any previous user's cached session
+        localStorage.removeItem('cached_messages');
+        localStorage.removeItem('cached_partner');
+        localStorage.removeItem('chat_theme');
+        localStorage.removeItem('chat_motion');
+
         if (data.token) {
           localStorage.setItem('chatToken', data.token);
           document.cookie = `chatToken=${data.token}; path=/; max-age=1296000; SameSite=Lax`;
+        }
+        if (data.user) {
+          localStorage.setItem('cached_user', JSON.stringify(data.user));
         }
 
         window.location.href = '/index.html';
@@ -209,9 +218,18 @@ function setupAuthForms() {
           return;
         }
 
+        // Clear any previous user's cached session
+        localStorage.removeItem('cached_messages');
+        localStorage.removeItem('cached_partner');
+        localStorage.removeItem('chat_theme');
+        localStorage.removeItem('chat_motion');
+
         if (data.token) {
           localStorage.setItem('chatToken', data.token);
           document.cookie = `chatToken=${data.token}; path=/; max-age=1296000; SameSite=Lax`;
+        }
+        if (data.user) {
+          localStorage.setItem('cached_user', JSON.stringify(data.user));
         }
 
         window.location.href = '/index.html';

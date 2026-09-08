@@ -8,9 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=4.7" />
-  <link rel="preload" href="/css/style.css?v=4.7" as="style" />
-  <link rel="preload" href="/js/chat.js?v=4.7" as="script" />
+  <link rel="stylesheet" href="/css/style.css?v=8.0" />
+  <link rel="preload" href="/css/style.css?v=8.0" as="style" />
+  <link rel="preload" href="/js/chat.js?v=8.0" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
     /* Dedicated Self-Contained Mobile App Layout Guarantee */
@@ -103,58 +103,6 @@
       user-select: none;
       -webkit-user-select: none;
       text-transform: capitalize;
-    }
-    .load-more-btn {
-      align-self: center;
-      margin: 6px auto 14px;
-      padding: 6px 18px;
-      border-radius: 20px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: rgba(28, 22, 50, 0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      color: rgba(255, 255, 255, 0.82);
-      font-family: inherit;
-      font-size: 12.5px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    .load-more-btn:hover {
-      background: rgba(139, 92, 246, 0.25);
-      border-color: rgba(139, 92, 246, 0.5);
-      color: #ffffff;
-      transform: translateY(-1px);
-      box-shadow: 0 6px 18px rgba(139, 92, 246, 0.35);
-    }
-    .load-more-btn:active {
-      transform: scale(0.96);
-    }
-    .load-more-btn .load-more-icon {
-      width: 14px;
-      height: 14px;
-      flex-shrink: 0;
-      transition: transform 0.3s ease;
-    }
-    .load-more-btn:hover .load-more-icon {
-      transform: rotate(-45deg);
-    }
-    .load-more-btn.loading {
-      opacity: 0.75;
-      pointer-events: none;
-    }
-    .load-more-btn.loading .load-more-icon {
-      animation: spinReload 0.8s linear infinite;
-    }
-    @keyframes spinReload {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
     }
     .message-wrapper, .message-bubble {
       -webkit-touch-callout: none !important;
@@ -646,13 +594,9 @@
 
     <!-- Messages Container -->
     <main class="chat-messages" id="chatMessages">
-      <button id="loadMoreBtn" class="load-more-btn" style="display:none;" type="button" title="Load older messages" aria-label="Load older messages">
-        <svg class="load-more-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-          <path d="M3 3v5h5"></path>
-        </svg>
-        <span class="load-more-text">Load older messages</span>
-      </button>
+      <div id="topLoadingSpinner" class="top-loading-spinner" style="display:none;" aria-hidden="true">
+        <div class="chat-spinner"></div>
+      </div>
 
       <div class="empty-chat" id="emptyChat" style="display:none;">
         <div class="empty-chat-icon-wrapper">
@@ -1121,12 +1065,12 @@
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer" aria-live="assertive"></div>
 
-  <!-- Scripts -->
+  <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=5.5"></script>
-  <script src="/js/emoji.js?v=5.5"></script>
-  <script src="/js/media.js?v=5.5"></script>
-  <script src="/js/socket.js?v=5.5"></script>
-  <script src="/js/chat.js?v=5.5"></script>
+  <script src="/js/ui.js?v=8.0"></script>
+  <script src="/js/emoji.js?v=8.0"></script>
+  <script src="/js/media.js?v=8.0"></script>
+  <script src="/js/socket.js?v=8.0"></script>
+  <script src="/js/chat.js?v=8.0"></script>
 </body>
 </html>

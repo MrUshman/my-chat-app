@@ -10,7 +10,12 @@ const router = express.Router();
 // Returns paginated messages for the conversation, newest first
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const PAGE_SIZE = 30;
+    // Disable HTTP 304 caching so client always gets fresh data
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const PAGE_SIZE = 500;
     const { before, limit } = req.query;
 
     // 7-Day (1-Week) Auto-Delete Cutoff: never return messages older than 7 days
@@ -35,7 +40,7 @@ router.get('/', requireAuth, async (req, res) => {
 
     const messages = await Message.find(query)
       .sort({ createdAt: -1 })
-      .limit(Math.min(parseInt(limit) || PAGE_SIZE, 50))
+      .limit(Math.min(parseInt(limit) || PAGE_SIZE, 1000))
       .select('text type mediaUrl mimeType fileSize duration deliveredAt readAt reactions replyTo createdAt senderId receiverId deletedForEveryone')
       .populate('senderId', 'username displayName')
       .populate('receiverId', 'username displayName')

@@ -24,3 +24,7 @@ Thumbs.db
 # Build output
 dist/
 build/
+
+# Backups
+server/backup_*.json
+*.bak

@@ -144,6 +144,10 @@ const { isUserOnline } = require('../sockets/chatSocket');
 // GET /api/auth/me — check if currently logged in and fetch partner in single fast query
 router.get('/me', requireAuth, async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const partner = await User.findOne({ _id: { $ne: req.user._id } })
       .select('username displayName profileImage lastSeen createdAt')
       .lean();
@@ -164,6 +168,10 @@ router.get('/me', requireAuth, async (req, res) => {
 // GET /api/auth/partner — get partner user info
 router.get('/partner', requireAuth, async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const partner = await User.findOne({ _id: { $ne: req.user._id } })
       .select('username displayName profileImage lastSeen createdAt')
       .lean();

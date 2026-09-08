@@ -138,12 +138,15 @@ function initSocket() {
 
   // ─── Typing Events ────────────────────────────────────────────────
 
-  socket.on('typing_start', ({ displayName }) => {
-    if (window.Chat) window.Chat.showTyping(displayName);
+  socket.on('typing_start', (data) => {
+    const displayName = data?.displayName;
+    const userId = data?.userId;
+    if (window.Chat) window.Chat.showTyping(displayName, userId);
   });
 
-  socket.on('typing_stop', () => {
-    if (window.Chat) window.Chat.hideTyping();
+  socket.on('typing_stop', (data) => {
+    const userId = data?.userId;
+    if (window.Chat) window.Chat.hideTyping(userId);
   });
 
   // ─── Presence Events ──────────────────────────────────────────────

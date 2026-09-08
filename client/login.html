@@ -602,9 +602,18 @@
             return;
           }
 
+          // Clear any previous user's cached session to prevent cross-account UI pollution
+          localStorage.removeItem('cached_messages');
+          localStorage.removeItem('cached_partner');
+          localStorage.removeItem('chat_theme');
+          localStorage.removeItem('chat_motion');
+
           if (data.token) {
             localStorage.setItem('chatToken', data.token);
             document.cookie = 'chatToken=' + data.token + '; path=/; max-age=1296000; SameSite=Lax';
+          }
+          if (data.user) {
+            localStorage.setItem('cached_user', JSON.stringify(data.user));
           }
 
           if (textEl) {
@@ -654,7 +663,12 @@
         var password = passEl ? passEl.value : '';
 
         if (!displayName || !username || !password) {
-          showRegError('All fields are required.');
+          showRegError('Please fill in all fields.');
+          return;
+        }
+
+        if (username.length < 3) {
+          showRegError('Username must be at least 3 characters.');
           return;
         }
 
@@ -683,9 +697,18 @@
             return;
           }
 
+          // Clear any previous user's cached session
+          localStorage.removeItem('cached_messages');
+          localStorage.removeItem('cached_partner');
+          localStorage.removeItem('chat_theme');
+          localStorage.removeItem('chat_motion');
+
           if (data.token) {
             localStorage.setItem('chatToken', data.token);
             document.cookie = 'chatToken=' + data.token + '; path=/; max-age=1296000; SameSite=Lax';
+          }
+          if (data.user) {
+            localStorage.setItem('cached_user', JSON.stringify(data.user));
           }
 
           if (textEl) {

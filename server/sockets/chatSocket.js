@@ -253,15 +253,29 @@ function initChatSocket(io) {
     });
 
     // ─── Typing Events ────────────────────────────────────────────────────────
-    socket.on('typing_start', () => {
-      socket.broadcast.emit('typing_start', {
-        userId,
-        displayName: user.displayName,
-      });
+    socket.on('typing_start', async () => {
+      try {
+        const otherUser = await User.findOne({ _id: { $ne: user._id } }).select('_id');
+        if (otherUser) {
+          io.to(otherUser._id.toString()).emit('typing_start', {
+            userId,
+            displayName: user.displayName,
+          });
+        }
+      } catch (err) {
+        console.error('typing_start error:', err.message);
+      }
     });
 
-    socket.on('typing_stop', () => {
-      socket.broadcast.emit('typing_stop', { userId });
+    socket.on('typing_stop', async () => {
+      try {
+        const otherUser = await User.findOne({ _id: { $ne: user._id } }).select('_id');
+        if (otherUser) {
+          io.to(otherUser._id.toString()).emit('typing_stop', { userId });
+        }
+      } catch (err) {
+        console.error('typing_stop error:', err.message);
+      }
     });
 
     // ─── Message Read ─────────────────────────────────────────────────────────

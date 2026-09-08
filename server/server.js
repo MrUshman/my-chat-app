@@ -81,7 +81,14 @@ app.use(express.static(clientDir, {
   },
 }));
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
+// ─── API Routes (No-Store Caching for Real-Time Accuracy) ──────────────────────
+
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messageRoutes);

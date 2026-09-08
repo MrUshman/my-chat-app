@@ -11,7 +11,7 @@ const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const logoutBtn = document.getElementById('logoutBtn');
-const loadMoreBtn = document.getElementById('loadMoreBtn');
+const topLoadingSpinner = document.getElementById('topLoadingSpinner');
 const emptyChat = document.getElementById('emptyChat');
 const typingIndicator = document.getElementById('typingIndicator');
 const typingText = document.getElementById('typingText');
@@ -47,40 +47,55 @@ window.getAuthHeaders = getAuthHeaders;
 
 // ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
 
+// Invalidate stale local cache from previous versions
+if (localStorage.getItem('chat_cache_version') !== 'v8.0') {
+  localStorage.removeItem('cached_messages');
+  localStorage.setItem('chat_cache_version', 'v8.0');
+}
+
 function applyCachedState() {
   try {
-    const cachedUser = localStorage.getItem('cached_user');
-    const cachedPartner = localStorage.getItem('cached_partner');
+    const cachedUserStr = localStorage.getItem('cached_user');
+    const cachedPartnerStr = localStorage.getItem('cached_partner');
     const cachedTheme = localStorage.getItem('chat_theme') || 'purple';
     const cachedMotion = localStorage.getItem('chat_motion') || 'floating-hearts';
-    const cachedMessages = localStorage.getItem('cached_messages');
+    const cachedMessagesStr = localStorage.getItem('cached_messages');
+    const cachedMessagesUser = localStorage.getItem('cached_messages_user');
 
     // Instantly apply theme
     applyThemeAndMotion(cachedTheme, cachedMotion);
 
     // Instantly populate current user profile
-    if (cachedUser) {
-      currentUser = JSON.parse(cachedUser);
+    if (cachedUserStr) {
+      currentUser = JSON.parse(cachedUserStr);
       updateMyProfileUI();
     }
 
     // Instantly populate partner profile
-    if (cachedPartner) {
-      partner = JSON.parse(cachedPartner);
+    if (cachedPartnerStr) {
+      partner = JSON.parse(cachedPartnerStr);
       updatePartnerInfo(partner);
     }
 
-    // Instantly render cached messages with 0ms blank screen (7 days retention)
-    if (cachedMessages) {
-      const messages = JSON.parse(cachedMessages);
+    // Instantly render cached messages ONLY if they match the currently logged-in user
+    if (currentUser && currentUser._id && cachedMessagesStr && (!cachedMessagesUser || cachedMessagesUser === currentUser._id)) {
+      const messages = JSON.parse(cachedMessagesStr);
       const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const validMessages = Array.isArray(messages) ? messages.filter(m => new Date(m.createdAt).getTime() >= cutoff) : [];
 
       if (validMessages.length > 0) {
         emptyChat.style.display = 'none';
+        let lastDateLabel = null;
+        const fragment = document.createDocumentFragment();
         for (const msg of validMessages) {
-          renderMessage(msg, 'append');
+          const msgDate = UI.formatDateLabel(msg.createdAt);
+          if (msgDate !== lastDateLabel) {
+            fragment.appendChild(createDateSeparator(msgDate));
+            lastDateLabel = msgDate;
+          }
+          renderMessage(msg, 'fragment', fragment);
         }
+        chatMessages.appendChild(fragment);
         oldestMessageId = validMessages[0]._id;
         scrollToBottom(false);
       }
@@ -92,13 +107,41 @@ function applyCachedState() {
 
 function saveMessagesToCache(messages) {
   try {
-    if (Array.isArray(messages) && messages.length > 0) {
+    if (Array.isArray(messages) && messages.length > 0 && currentUser?._id) {
       const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      // Store up to 50 latest messages within 7 days for instant 0ms reload
-      const valid = messages.filter(m => new Date(m.createdAt).getTime() >= cutoff).slice(-50);
+      // Store up to 500 latest messages within 7 days for instant 0ms reload
+      const valid = messages.filter(m => new Date(m.createdAt).getTime() >= cutoff).slice(-500);
       localStorage.setItem('cached_messages', JSON.stringify(valid));
+      localStorage.setItem('cached_messages_user', currentUser._id);
     }
   } catch (e) {}
+}
+
+function clearAndRenderInitialMessages(messages) {
+  // Clear any existing cached messages to prevent order inversion or duplicates
+  renderedMessageIds.clear();
+  const elementsToRemove = chatMessages.querySelectorAll('.message-wrapper, .date-separator');
+  elementsToRemove.forEach(el => el.remove());
+
+  let lastDateLabel = null;
+  const fragment = document.createDocumentFragment();
+
+  for (const msg of messages) {
+    const msgDate = UI.formatDateLabel(msg.createdAt);
+    if (msgDate !== lastDateLabel) {
+      fragment.appendChild(createDateSeparator(msgDate));
+      lastDateLabel = msgDate;
+    }
+    renderMessage(msg, 'fragment', fragment);
+  }
+
+  chatMessages.appendChild(fragment);
+
+  if (messages.length > 0) {
+    oldestMessageId = messages[0]._id;
+    saveMessagesToCache(messages);
+  }
+  scrollToBottom(false);
 }
 
 async function init() {
@@ -119,7 +162,7 @@ async function init() {
   try {
     const [authRes, messagesRes] = await Promise.all([
       fetch('/api/auth/me', { credentials: 'include', headers: getAuthHeaders() }),
-      fetch('/api/messages?limit=30', { credentials: 'include', headers: getAuthHeaders() }),
+      fetch('/api/messages?limit=1000', { credentials: 'include', headers: getAuthHeaders() }),
     ]);
 
     if (!authRes.ok) {
@@ -150,28 +193,15 @@ async function init() {
     // Sync messages
     if (messagesRes.ok) {
       const { messages, hasMore } = await messagesRes.json();
-      hasMoreMessages = hasMore;
-      loadMoreBtn.style.display = hasMore ? 'flex' : 'none';
+      hasMoreMessages = Boolean(hasMore);
 
       if (messages.length === 0 && renderedMessageIds.size === 0) {
         emptyChat.style.display = 'flex';
       } else if (messages.length > 0) {
         emptyChat.style.display = 'none';
-        let hasNew = false;
-        for (const msg of messages) {
-          if (!renderedMessageIds.has(msg._id)) {
-            renderMessage(msg, 'append');
-            hasNew = true;
-          }
-        }
-        oldestMessageId = messages[0]._id;
-        saveMessagesToCache(messages);
-        if (hasNew) {
-          scrollToBottom(false);
-        }
+        clearAndRenderInitialMessages(messages);
       }
     }
-
   } catch (err) {
     console.error('Init parallel fetch error:', err);
     // If offline but cache rendered, let user stay in chat!
@@ -218,17 +248,16 @@ async function loadPartnerInfo() {
 
 // ─── Load Messages (paginated) ────────────────────────────────────
 
-async function loadMessages(before = null) {
+async function loadMessages(before = null, limit = 500) {
   if (isLoadingMessages) return;
   isLoadingMessages = true;
-  if (loadMoreBtn) {
-    loadMoreBtn.classList.add('loading');
-    const textEl = loadMoreBtn.querySelector('.load-more-text');
-    if (textEl) textEl.textContent = 'Loading earlier messages...';
+
+  if (topLoadingSpinner && before) {
+    topLoadingSpinner.style.display = 'flex';
   }
 
   try {
-    let url = '/api/messages?limit=20';
+    let url = `/api/messages?limit=${limit}`;
     if (before) url += `&before=${before}`;
 
     const res = await fetch(url, { credentials: 'include', headers: getAuthHeaders() });
@@ -236,8 +265,7 @@ async function loadMessages(before = null) {
 
     const { messages, hasMore } = await res.json();
 
-    hasMoreMessages = hasMore;
-    loadMoreBtn.style.display = hasMore ? 'flex' : 'none';
+    hasMoreMessages = Boolean(hasMore);
 
     if (messages.length === 0 && !before) {
       emptyChat.style.display = 'flex';
@@ -248,40 +276,42 @@ async function loadMessages(before = null) {
 
     if (before) {
       if (messages.length > 0) {
-        // 1. Identify the reference message currently in the chat
-        const anchorNode = chatMessages.querySelector('.message-wrapper, .date-separator');
+        // 1. Identify the reference message wrapper currently in the chat
+        const anchorNode = chatMessages.querySelector('.message-wrapper');
         const prevAnchorTop = anchorNode ? anchorNode.getBoundingClientRect().top : 0;
 
-        // 2. Build fragment of older messages in chronological order
+        // 2. Build fragment of older messages in chronological order with proper date separators
         const fragment = document.createDocumentFragment();
+        let lastDateLabel = null;
+
         for (const msg of messages) {
+          const msgDate = UI.formatDateLabel(msg.createdAt);
+          if (msgDate !== lastDateLabel) {
+            fragment.appendChild(createDateSeparator(msgDate));
+            lastDateLabel = msgDate;
+          }
           renderMessage(msg, 'fragment', fragment);
         }
 
-        if (anchorNode && anchorNode.parentNode === chatMessages) {
-          chatMessages.insertBefore(fragment, anchorNode);
-        } else {
-          chatMessages.appendChild(fragment);
-        }
-
-        // 3. WhatsApp & Messenger Scroll Pinning: Keep viewport frozen on the exact same message
+        // Check if the element right before anchorNode is a date separator matching lastDateLabel
         if (anchorNode) {
+          const prevEl = anchorNode.previousElementSibling;
+          if (prevEl && prevEl.classList.contains('date-separator') && prevEl.dataset.date === lastDateLabel) {
+            prevEl.remove();
+          }
+          chatMessages.insertBefore(fragment, anchorNode);
           const newAnchorTop = anchorNode.getBoundingClientRect().top;
           const delta = newAnchorTop - prevAnchorTop;
           chatMessages.scrollTop += delta;
+        } else {
+          chatMessages.appendChild(fragment);
         }
 
         // Track oldest message ID for pagination
         oldestMessageId = messages[0]._id;
       }
     } else {
-      for (const msg of messages) {
-        renderMessage(msg, 'append');
-      }
-      if (messages.length > 0) {
-        oldestMessageId = messages[0]._id;
-        saveMessagesToCache(messages);
-      }
+      clearAndRenderInitialMessages(messages);
     }
 
     // Mark incoming unread messages as read in real-time
@@ -315,13 +345,10 @@ async function loadMessages(before = null) {
 
   } catch (err) {
     console.error('loadMessages error:', err);
-    UI.showToast('Could not load messages.', 'error');
   } finally {
     isLoadingMessages = false;
-    if (loadMoreBtn) {
-      loadMoreBtn.classList.remove('loading');
-      const textEl = loadMoreBtn.querySelector('.load-more-text');
-      if (textEl) textEl.textContent = 'Load older messages';
+    if (topLoadingSpinner) {
+      topLoadingSpinner.style.display = 'none';
     }
   }
 }
@@ -462,7 +489,7 @@ function renderMessage(msg, position = 'append', container = null) {
     } else if (position === 'fragment' && container) {
       container.appendChild(wrapper);
     } else {
-      const ref = loadMoreBtn ? loadMoreBtn.nextSibling : chatMessages.firstChild;
+      const ref = topLoadingSpinner ? topLoadingSpinner.nextSibling : chatMessages.firstChild;
       chatMessages.insertBefore(wrapper, ref);
     }
     return;
@@ -559,8 +586,8 @@ function renderMessage(msg, position = 'append', container = null) {
   } else if (position === 'fragment' && container) {
     container.appendChild(wrapper);
   } else {
-    // Prepend — insert after load more button
-    const ref = loadMoreBtn ? loadMoreBtn.nextSibling : chatMessages.firstChild;
+    // Prepend — insert after loading spinner
+    const ref = topLoadingSpinner ? topLoadingSpinner.nextSibling : chatMessages.firstChild;
     chatMessages.insertBefore(wrapper, ref);
   }
 
@@ -784,7 +811,50 @@ function sendReadReceipts() {
 }
 
 function setupScrollObserver() {
-  // Send read receipts when user is viewing the chat or returns to it
+  // 1. Smooth Scroll & Wheel & Touch Listener with generous 500px threshold
+  let scrollThrottle = null;
+  const triggerAutoLoad = () => {
+    if (chatMessages.scrollTop < 500 && hasMoreMessages && !isLoadingMessages && oldestMessageId) {
+      loadMessages(oldestMessageId);
+    }
+  };
+
+  chatMessages.addEventListener('scroll', () => {
+    if (!scrollThrottle) {
+      scrollThrottle = setTimeout(() => {
+        scrollThrottle = null;
+        triggerAutoLoad();
+      }, 50);
+    }
+  }, { passive: true });
+
+  chatMessages.addEventListener('wheel', (e) => {
+    if (e.deltaY < 0) {
+      triggerAutoLoad();
+    }
+  }, { passive: true });
+
+  chatMessages.addEventListener('touchmove', () => {
+    triggerAutoLoad();
+  }, { passive: true });
+
+  // 2. IntersectionObserver for zero-lag background fetching when scrolling near top
+  if ('IntersectionObserver' in window && topLoadingSpinner) {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && hasMoreMessages && !isLoadingMessages && oldestMessageId) {
+          loadMessages(oldestMessageId);
+        }
+      }
+    }, {
+      root: chatMessages,
+      rootMargin: '400px 0px 0px 0px',
+      threshold: 0.01,
+    });
+    observer.observe(topLoadingSpinner);
+  }
+
+  // 3. Send read receipts when user is viewing the chat or returns to it
   ['visibilitychange', 'focus', 'click', 'touchstart'].forEach(evt => {
     window.addEventListener(evt, () => {
       if (!document.hidden && unreadMessageIds.length > 0) {
@@ -877,7 +947,11 @@ setInterval(() => {
 
 // ─── Typing Indicator (WhatsApp Style Header & Bubble) ─────────────
 
-function showTyping(displayName) {
+function showTyping(displayName, fromUserId = null) {
+  const currentUid = currentUser?._id?.toString();
+  if (fromUserId && currentUid && fromUserId.toString() === currentUid) {
+    return; // Never show typing for ourselves!
+  }
   isPartnerTyping = true;
   if (statusText) {
     statusText.textContent = 'typing...';
@@ -889,7 +963,7 @@ function showTyping(displayName) {
     statusDot.classList.add('typing');
   }
   if (typingText) {
-    typingText.textContent = `${displayName || 'Partner'} is typing...`;
+    typingText.textContent = `${displayName || (partner ? partner.displayName : 'Partner')} is typing...`;
   }
   if (typingIndicator) {
     typingIndicator.classList.add('visible');
@@ -897,7 +971,11 @@ function showTyping(displayName) {
   scrollToBottom();
 }
 
-function hideTyping() {
+function hideTyping(fromUserId = null) {
+  const currentUid = currentUser?._id?.toString();
+  if (fromUserId && currentUid && fromUserId.toString() === currentUid) {
+    return;
+  }
   isPartnerTyping = false;
   if (statusText) {
     statusText.classList.remove('typing');
@@ -979,13 +1057,6 @@ function setupInputEvents() {
   updateSendButton();
 
   logoutBtn.addEventListener('click', logout);
-
-  loadMoreBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    if (oldestMessageId) {
-      loadMessages(oldestMessageId);
-    }
-  });
 
   // Request notification permission
   if ('Notification' in window && Notification.permission === 'default') {
@@ -1560,6 +1631,7 @@ function logout() {
   localStorage.removeItem('cached_user');
   localStorage.removeItem('cached_partner');
   localStorage.removeItem('cached_messages');
+  localStorage.removeItem('cached_messages_user');
   document.cookie = 'chatToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; max-age=0; SameSite=Lax';
 
   // 2. Disconnect socket instantly
