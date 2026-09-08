@@ -64,23 +64,20 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-// Disable browser caching during dev testing to ensure mobile phones get fresh code
-app.use((req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  next();
-});
-
-// Serve the client/ folder as static files
+// Serve the client/ folder with smart caching for instant 0ms loads
 const clientDir = path.join(__dirname, '../client');
 app.use(express.static(clientDir, {
-  etag: false,
-  lastModified: false,
-  setHeaders: (res) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+  etag: true,
+  lastModified: true,
+  maxAge: isProduction ? '1d' : 0,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      // HTML is never cached so user always gets latest app skeleton
+      res.setHeader('Cache-Control', 'no-cache');
+    } else {
+      // JS, CSS, Media & Fonts cached for instant reload
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    }
   },
 }));
 
