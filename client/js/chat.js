@@ -68,7 +68,6 @@ function applyCachedState() {
     if (cachedPartner) {
       partner = JSON.parse(cachedPartner);
       updatePartnerInfo(partner);
-      setPartnerOnline(false, partner.lastSeen);
     }
 
     // Instantly render last 20 messages with 0ms blank screen (filtering out >48h)
