@@ -17,16 +17,16 @@ const { deleteFile } = require('./storageService');
 async function runCleanup() {
   try {
     const now = new Date();
-    // 48 hours ago cutoff
-    const autoDeleteCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    // 7 Days (1 Week) cutoff
+    const autoDeleteCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // 1. Permanently delete all messages older than 48 hours (text & media)
+    // 1. Permanently delete all messages older than 7 days (text & media)
     const oldMessages = await Message.find({
       createdAt: { $lte: autoDeleteCutoff },
     }).select('_id mediaStorageKey').lean();
 
     if (oldMessages.length > 0) {
-      console.log(`🧹 48-Hour Cleanup: found ${oldMessages.length} message(s) older than 48 hours.`);
+      console.log(`🧹 7-Day Cleanup: found ${oldMessages.length} message(s) older than 7 days.`);
 
       // Clean up files for any media messages before deleting record
       for (const msg of oldMessages) {
@@ -42,7 +42,7 @@ async function runCleanup() {
       const deleteRes = await Message.deleteMany({
         createdAt: { $lte: autoDeleteCutoff },
       });
-      console.log(`✅ Permanently deleted ${deleteRes.deletedCount} message(s) older than 48 hours.`);
+      console.log(`✅ Permanently deleted ${deleteRes.deletedCount} message(s) older than 7 days.`);
     }
 
     // 2. Also clean up any earlier expired media messages (expiresAt <= now)

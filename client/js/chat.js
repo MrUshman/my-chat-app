@@ -70,10 +70,10 @@ function applyCachedState() {
       updatePartnerInfo(partner);
     }
 
-    // Instantly render last 20 messages with 0ms blank screen (filtering out >48h)
+    // Instantly render cached messages with 0ms blank screen (7 days retention)
     if (cachedMessages) {
       const messages = JSON.parse(cachedMessages);
-      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const validMessages = Array.isArray(messages) ? messages.filter(m => new Date(m.createdAt).getTime() >= cutoff) : [];
 
       if (validMessages.length > 0) {
@@ -81,6 +81,7 @@ function applyCachedState() {
         for (const msg of validMessages) {
           renderMessage(msg, 'append');
         }
+        oldestMessageId = validMessages[0]._id;
         scrollToBottom(false);
       }
     }
@@ -92,9 +93,9 @@ function applyCachedState() {
 function saveMessagesToCache(messages) {
   try {
     if (Array.isArray(messages) && messages.length > 0) {
-      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
-      // Only keep messages within 48h (max 25)
-      const valid = messages.filter(m => new Date(m.createdAt).getTime() >= cutoff).slice(-25);
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      // Store up to 50 latest messages within 7 days for instant 0ms reload
+      const valid = messages.filter(m => new Date(m.createdAt).getTime() >= cutoff).slice(-50);
       localStorage.setItem('cached_messages', JSON.stringify(valid));
     }
   } catch (e) {}
@@ -118,7 +119,7 @@ async function init() {
   try {
     const [authRes, messagesRes] = await Promise.all([
       fetch('/api/auth/me', { credentials: 'include', headers: getAuthHeaders() }),
-      fetch('/api/messages?limit=20', { credentials: 'include', headers: getAuthHeaders() }),
+      fetch('/api/messages?limit=30', { credentials: 'include', headers: getAuthHeaders() }),
     ]);
 
     if (!authRes.ok) {
@@ -156,12 +157,18 @@ async function init() {
         emptyChat.style.display = 'flex';
       } else if (messages.length > 0) {
         emptyChat.style.display = 'none';
+        let hasNew = false;
         for (const msg of messages) {
-          renderMessage(msg, 'append');
+          if (!renderedMessageIds.has(msg._id)) {
+            renderMessage(msg, 'append');
+            hasNew = true;
+          }
         }
         oldestMessageId = messages[0]._id;
         saveMessagesToCache(messages);
-        scrollToBottom(false);
+        if (hasNew) {
+          scrollToBottom(false);
+        }
       }
     }
 
