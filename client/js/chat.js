@@ -379,10 +379,11 @@ function updatePartnerInfo(user) {
   if (!user) return;
   partner = user;
   renderChatsList();
-  if (partnerName) partnerName.textContent = user.displayName;
-  document.title = `Chat with ${user.displayName} ❤️`;
+  const nameEl = document.getElementById('partnerName') || partnerName;
+  if (nameEl) nameEl.textContent = user.displayName || 'Partner';
+  document.title = `Chat with ${user.displayName || 'Partner'} ❤️`;
 
-  const avatarEl = document.getElementById('partnerAvatar');
+  const avatarEl = document.getElementById('partnerAvatar') || partnerAvatar;
   if (avatarEl) {
     if (user.profileImage) {
       avatarEl.className = 'header-avatar';

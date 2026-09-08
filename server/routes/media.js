@@ -82,8 +82,8 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     });
 
     // Populate sender & receiver info for socket broadcast
-    await message.populate('senderId', 'username displayName profileImage');
-    await message.populate('receiverId', 'username displayName profileImage');
+    await message.populate('senderId', 'username displayName');
+    await message.populate('receiverId', 'username displayName');
     if (message.replyTo) {
       await message.populate({
         path: 'replyTo',

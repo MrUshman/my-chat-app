@@ -36,8 +36,8 @@ router.get('/', requireAuth, async (req, res) => {
     const messages = await Message.find(query)
       .sort({ createdAt: -1 })
       .limit(Math.min(parseInt(limit) || PAGE_SIZE, 50))
-      .populate('senderId', 'username displayName profileImage')
-      .populate('receiverId', 'username displayName profileImage')
+      .populate('senderId', 'username displayName')
+      .populate('receiverId', 'username displayName')
       .populate({
         path: 'replyTo',
         select: 'text type mediaUrl senderId deletedForEveryone',

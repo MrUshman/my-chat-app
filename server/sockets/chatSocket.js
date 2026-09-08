@@ -159,8 +159,8 @@ function initChatSocket(io) {
           replyTo: replyTo || null,
         });
 
-        await message.populate('senderId', 'username displayName profileImage');
-        await message.populate('receiverId', 'username displayName profileImage');
+        await message.populate('senderId', 'username displayName');
+        await message.populate('receiverId', 'username displayName');
         if (message.replyTo) {
           await message.populate({
             path: 'replyTo',
@@ -208,8 +208,8 @@ function initChatSocket(io) {
           _id: messageId,
           senderId: user._id,
         })
-          .populate('senderId', 'username displayName profileImage')
-          .populate('receiverId', 'username displayName profileImage')
+          .populate('senderId', 'username displayName')
+          .populate('receiverId', 'username displayName')
           .populate({
             path: 'replyTo',
             select: 'text type mediaUrl senderId deletedForEveryone',
