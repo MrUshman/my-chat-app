@@ -1543,30 +1543,35 @@ function scrollToBottom(smooth = true) {
   });
 }
 
-// ─── Logout ───────────────────────────────────────────────────────
+// ─── Logout (Instant 0ms) ──────────────────────────────────────────
 
-async function logout() {
-  try {
-    const token = localStorage.getItem('chatToken');
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+function logout() {
+  const token = localStorage.getItem('chatToken');
 
-    await fetch('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-    });
-  } catch {}
-
-  // Explicitly clear token from localStorage and cookie
+  // 1. Instantly clear all tokens and caches
   localStorage.removeItem('chatToken');
+  localStorage.removeItem('cached_user');
+  localStorage.removeItem('cached_partner');
+  localStorage.removeItem('cached_messages');
   document.cookie = 'chatToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; max-age=0; SameSite=Lax';
 
-  // Disconnect socket if connected
-  if (socket && typeof socket.disconnect === 'function') {
-    socket.disconnect();
+  // 2. Disconnect socket instantly
+  if (socket) {
+    try { socket.emit('client_offline'); } catch(e) {}
+    try { socket.disconnect(); } catch(e) {}
   }
 
+  // 3. Fire server logout asynchronously (keepalive so it completes even after page unloads)
+  if (token) {
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Authorization': `Bearer ${token}` },
+      keepalive: true,
+    }).catch(() => {});
+  }
+
+  // 4. Instant 0ms redirect to login screen
   window.location.replace('/login.html?logout=true');
 }
 
