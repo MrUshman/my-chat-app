@@ -330,8 +330,10 @@ function updateMyProfileUI() {
 
   if (myAvatarEl) {
     if (currentUser.profileImage) {
-      myAvatarEl.innerHTML = `<img src="${currentUser.profileImage}" alt="${currentUser.displayName}" />`;
+      myAvatarEl.className = 'header-avatar';
+      myAvatarEl.innerHTML = `<img src="${currentUser.profileImage}" alt="${escapeHtml(currentUser.displayName)}" onerror="this.onerror=null; this.parentElement.className='header-avatar-placeholder'; this.parentElement.textContent='${escapeHtml((currentUser.displayName || 'U').charAt(0).toUpperCase())}';" />`;
     } else {
+      myAvatarEl.className = 'header-avatar-placeholder';
       myAvatarEl.textContent = (currentUser.displayName || 'U').charAt(0).toUpperCase();
     }
   }
@@ -345,7 +347,7 @@ function renderChatsList() {
 
   const initial = (partner.displayName || 'P').charAt(0).toUpperCase();
   const avatarHtml = partner.profileImage
-    ? `<img src="${partner.profileImage}" alt="${partner.displayName}" />`
+    ? `<img src="${partner.profileImage}" alt="${escapeHtml(partner.displayName)}" onerror="this.onerror=null; this.parentElement.textContent='${initial}';" />`
     : initial;
 
   const isPartnerOnline = statusDot.classList.contains('online');
@@ -381,10 +383,10 @@ function updatePartnerInfo(user) {
   if (avatarEl) {
     if (user.profileImage) {
       avatarEl.className = 'header-avatar';
-      avatarEl.innerHTML = `<img src="${user.profileImage}" alt="${user.displayName}" />`;
+      avatarEl.innerHTML = `<img src="${user.profileImage}" alt="${escapeHtml(user.displayName)}" onerror="this.onerror=null; this.parentElement.className='header-avatar-placeholder'; this.parentElement.textContent='${escapeHtml((user.displayName || 'P').charAt(0).toUpperCase())}';" />`;
     } else {
       avatarEl.className = 'header-avatar-placeholder';
-      avatarEl.textContent = user.displayName.charAt(0).toUpperCase();
+      avatarEl.textContent = (user.displayName || 'P').charAt(0).toUpperCase();
     }
   }
 }
@@ -1064,6 +1066,9 @@ function setupSettingsAndProfile() {
     openProfileModal();
   });
 
+  // Setup Partner Profile Visit
+  setupPartnerProfile();
+
   // Logout button
   const logoutBtn = document.getElementById('logoutBtn');
   logoutBtn?.addEventListener('click', (e) => {
@@ -1158,7 +1163,7 @@ function openProfileModal() {
   profileUsernameInput.value = `@${currentUser.username || ''}`;
 
   if (currentUser.profileImage) {
-    profileAvatarDisplay.innerHTML = `<img src="${currentUser.profileImage}" alt="${currentUser.displayName}" />`;
+    profileAvatarDisplay.innerHTML = `<img src="${currentUser.profileImage}" alt="${escapeHtml(currentUser.displayName)}" onerror="this.onerror=null; this.parentElement.textContent='${escapeHtml((currentUser.displayName || 'U').charAt(0).toUpperCase())}';" />`;
   } else {
     profileAvatarDisplay.textContent = (currentUser.displayName || 'U').charAt(0).toUpperCase();
   }
@@ -1170,6 +1175,248 @@ function closeProfileModal() {
   profileModal.style.display = 'none';
   selectedAvatarFile = null;
 }
+
+// ─── Partner Profile Visit System (WhatsApp Style) ───────────────────
+
+let isPartnerProfileSetupDone = false;
+
+function setupPartnerProfile() {
+  if (isPartnerProfileSetupDone) return;
+  isPartnerProfileSetupDone = true;
+
+  const headerProfileTrigger = document.getElementById('headerProfileTrigger');
+  const partnerProfileMenuBtn = document.getElementById('partnerProfileMenuBtn');
+  const partnerProfileModal = document.getElementById('partnerProfileModal');
+  const partnerProfileBackBtn = document.getElementById('partnerProfileBackBtn');
+  const partnerProfileCloseBtn = document.getElementById('partnerProfileCloseBtn');
+  const partnerAvatarHeroTrigger = document.getElementById('partnerAvatarHeroTrigger');
+  const copyPartnerUsernameBtn = document.getElementById('copyPartnerUsernameBtn');
+  const partnerActionChatBtn = document.getElementById('partnerActionChatBtn');
+  const partnerActionSearchBtn = document.getElementById('partnerActionSearchBtn');
+  const partnerActionThemeBtn = document.getElementById('partnerActionThemeBtn');
+
+  // Trigger from chat header
+  headerProfileTrigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openPartnerProfile();
+  });
+  headerProfileTrigger?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openPartnerProfile();
+    }
+  });
+
+  // Trigger from settings dropdown menu
+  partnerProfileMenuBtn?.addEventListener('click', () => {
+    if (settingsDropdown) settingsDropdown.style.display = 'none';
+    if (settingsBtn) settingsBtn.classList.remove('active');
+    document.body.classList.remove('menu-open');
+    openPartnerProfile();
+  });
+
+  // Close buttons
+  partnerProfileBackBtn?.addEventListener('click', closePartnerProfile);
+  partnerProfileCloseBtn?.addEventListener('click', closePartnerProfile);
+  partnerProfileModal?.addEventListener('click', (e) => {
+    if (e.target === partnerProfileModal) closePartnerProfile();
+  });
+
+  // Tap Avatar for Fullscreen Photo Mode!
+  partnerAvatarHeroTrigger?.addEventListener('click', () => {
+    if (partner && partner.profileImage) {
+      UI.openImageModal(partner.profileImage, `${partner.displayName || 'partner'}-photo.jpg`);
+    } else {
+      UI.showToast(`${partner?.displayName || 'Partner'} has not set a custom photo yet ❤️`, 'info');
+    }
+  });
+
+  // Copy username
+  copyPartnerUsernameBtn?.addEventListener('click', () => {
+    if (!partner || !partner.username) return;
+    navigator.clipboard.writeText(`@${partner.username}`).then(() => {
+      const copyText = document.getElementById('copyUsernameText');
+      if (copyText) copyText.textContent = 'Copied! ✓';
+      UI.showToast(`@${partner.username} copied to clipboard 📋`, 'success');
+      setTimeout(() => {
+        if (copyText) copyText.textContent = 'Copy';
+      }, 2000);
+    }).catch(() => {
+      UI.showToast(`@${partner.username}`, 'info');
+    });
+  });
+
+  // Quick action: Message (Close & Focus input)
+  partnerActionChatBtn?.addEventListener('click', () => {
+    closePartnerProfile();
+    if (messageInput) {
+      setTimeout(() => {
+        messageInput.focus();
+      }, 100);
+    }
+  });
+
+  // Quick action: Search Chat
+  partnerActionSearchBtn?.addEventListener('click', () => {
+    closePartnerProfile();
+    setTimeout(() => {
+      openChatSearch();
+    }, 100);
+  });
+
+  // Quick action: Theme & Wallpaper
+  partnerActionThemeBtn?.addEventListener('click', () => {
+    closePartnerProfile();
+    setTimeout(() => {
+      openThemeModal();
+    }, 100);
+  });
+}
+
+function openPartnerProfile() {
+  const modal = document.getElementById('partnerProfileModal');
+  if (!modal) return;
+
+  const heroAvatar = document.getElementById('partnerProfileHeroAvatar');
+  const heroName = document.getElementById('partnerProfileHeroName');
+  const heroUsername = document.getElementById('partnerProfileHeroUsername');
+  const heroStatusPill = document.getElementById('partnerProfileHeroStatusPill');
+  const heroStatusText = document.getElementById('partnerProfileHeroStatusText');
+  const joinedDateEl = document.getElementById('partnerProfileJoinedDate');
+
+  const p = partner || {};
+
+  // Display Name
+  if (heroName) {
+    heroName.textContent = p.displayName || 'Partner';
+  }
+
+  // Username
+  if (heroUsername) {
+    heroUsername.textContent = `@${p.username || 'user'}`;
+  }
+
+  // Avatar
+  if (heroAvatar) {
+    if (p.profileImage) {
+      heroAvatar.className = 'partner-hero-avatar';
+      heroAvatar.innerHTML = `<img src="${p.profileImage}" alt="${escapeHtml(p.displayName || 'Partner')}" onerror="this.onerror=null; this.parentElement.className='partner-hero-avatar-placeholder'; this.parentElement.textContent='${escapeHtml((p.displayName || 'P').charAt(0).toUpperCase())}';" />`;
+    } else {
+      heroAvatar.className = 'partner-hero-avatar-placeholder';
+      heroAvatar.textContent = (p.displayName || 'P').charAt(0).toUpperCase();
+    }
+  }
+
+  // Live status pill
+  if (heroStatusPill && heroStatusText) {
+    if (isPartnerTyping) {
+      heroStatusPill.className = 'partner-hero-status-pill online';
+      heroStatusText.textContent = 'typing...';
+    } else if (isPartnerOnline) {
+      heroStatusPill.className = 'partner-hero-status-pill online';
+      heroStatusText.textContent = 'Online';
+    } else {
+      heroStatusPill.className = 'partner-hero-status-pill';
+      heroStatusText.textContent = UI.formatLastSeen(partnerLastSeenDate || p.lastSeen);
+    }
+  }
+
+  // Member Since Date
+  if (joinedDateEl) {
+    if (p.createdAt) {
+      try {
+        const d = new Date(p.createdAt);
+        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+        joinedDateEl.textContent = `Connected ${d.toLocaleDateString(undefined, options)}`;
+      } catch (_) {
+        joinedDateEl.textContent = 'Our Private Space ❤️';
+      }
+    } else {
+      joinedDateEl.textContent = 'Our Private Space ❤️';
+    }
+  }
+
+  // Build Shared Media Gallery
+  populateSharedMediaGallery();
+
+  // Show modal with animation
+  modal.style.display = 'flex';
+  void modal.offsetWidth;
+  modal.classList.add('active');
+}
+
+function closePartnerProfile() {
+  const modal = document.getElementById('partnerProfileModal');
+  if (!modal) return;
+
+  modal.classList.remove('active');
+  setTimeout(() => {
+    modal.style.display = 'none';
+  }, 220);
+}
+
+function populateSharedMediaGallery() {
+  const mediaGrid = document.getElementById('partnerSharedMediaGrid');
+  const mediaCount = document.getElementById('partnerSharedMediaCount');
+  if (!mediaGrid) return;
+
+  mediaGrid.innerHTML = '';
+
+  // Extract photos and videos from rendered message state
+  const images = chatMessages ? Array.from(chatMessages.querySelectorAll('.message-bubble img.media-photo, .message-bubble img.image-preview-thumb')) : [];
+  const videos = chatMessages ? Array.from(chatMessages.querySelectorAll('.message-bubble video.media-video, .message-bubble video.video-preview-thumb')) : [];
+
+  const mediaItems = [];
+  const seenUrls = new Set();
+
+  images.forEach(img => {
+    const src = img.getAttribute('src') || img.src;
+    if (src && !seenUrls.has(src)) {
+      seenUrls.add(src);
+      mediaItems.push({ type: 'image', url: src });
+    }
+  });
+
+  videos.forEach(vid => {
+    const src = vid.getAttribute('src') || vid.src || vid.querySelector('source')?.src;
+    if (src && !seenUrls.has(src)) {
+      seenUrls.add(src);
+      mediaItems.push({ type: 'video', url: src });
+    }
+  });
+
+  if (mediaCount) {
+    mediaCount.textContent = `${mediaItems.length} item${mediaItems.length === 1 ? '' : 's'}`;
+  }
+
+  if (mediaItems.length === 0) {
+    mediaGrid.innerHTML = `<div class="shared-media-empty">No photos or videos shared yet 📷</div>`;
+    return;
+  }
+
+  mediaItems.slice(0, 9).forEach(item => {
+    const thumb = document.createElement('div');
+    thumb.className = 'shared-media-thumb';
+    if (item.type === 'image') {
+      thumb.innerHTML = `<img src="${item.url}" alt="Shared photo" loading="lazy" />`;
+      thumb.addEventListener('click', () => {
+        UI.openImageModal(item.url, 'shared-photo.jpg');
+      });
+    } else {
+      thumb.innerHTML = `
+        <video src="${item.url}" preload="metadata" muted playsinline></video>
+        <span class="shared-media-video-badge">▶ Video</span>
+      `;
+      thumb.addEventListener('click', () => {
+        UI.openVideoModal(item.url, 'shared-video.mp4');
+      });
+    }
+    mediaGrid.appendChild(thumb);
+  });
+}
+
+window.openPartnerProfile = openPartnerProfile;
+window.closePartnerProfile = closePartnerProfile;
 
 function updateSendButton() {
   const text = (messageInput && messageInput.value) || '';
@@ -2070,13 +2317,21 @@ function setupInChatSearch() {
 
   if (!searchToggleBtn || !chatSearchBar) return;
 
+  function openSearch() {
+    chatSearchBar.style.display = 'flex';
+    setTimeout(() => {
+      chatSearchInput?.focus();
+    }, 50);
+  }
+
+  window.openChatSearch = openSearch;
+
   searchToggleBtn.addEventListener('click', () => {
     const isVisible = chatSearchBar.style.display === 'flex';
     if (isVisible) {
       closeSearch();
     } else {
-      chatSearchBar.style.display = 'flex';
-      chatSearchInput?.focus();
+      openSearch();
     }
   });
 
@@ -2158,14 +2413,21 @@ function handleBackButton() {
     return true;
   }
 
-  // 4. Profile Modal
+  // 4. Partner Profile Modal Sheet
+  const partnerProfileModal = document.getElementById('partnerProfileModal');
+  if (partnerProfileModal && (partnerProfileModal.classList.contains('active') || partnerProfileModal.style.display === 'flex')) {
+    closePartnerProfile();
+    return true;
+  }
+
+  // 5. Profile Modal
   const profileModal = document.getElementById('profileModal');
   if (profileModal && (profileModal.classList.contains('active') || profileModal.style.display === 'flex')) {
     closeProfileModal();
     return true;
   }
 
-  // 5. Theme Customizer Modal
+  // 6. Theme Customizer Modal
   const themeModal = document.getElementById('themeModal');
   if (themeModal && (themeModal.classList.contains('active') || themeModal.style.display === 'flex')) {
     closeThemeModal();

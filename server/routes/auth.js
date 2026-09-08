@@ -144,7 +144,7 @@ const { isUserOnline } = require('../sockets/chatSocket');
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const partner = await User.findOne({ _id: { $ne: req.user._id } })
-      .select('username displayName profileImage lastSeen')
+      .select('username displayName profileImage lastSeen createdAt')
       .lean();
 
     const io = req.app.get('io');
@@ -164,7 +164,7 @@ router.get('/me', requireAuth, async (req, res) => {
 router.get('/partner', requireAuth, async (req, res) => {
   try {
     const partner = await User.findOne({ _id: { $ne: req.user._id } })
-      .select('username displayName profileImage lastSeen')
+      .select('username displayName profileImage lastSeen createdAt')
       .lean();
     if (!partner) {
       return res.status(404).json({ error: 'Partner not found' });

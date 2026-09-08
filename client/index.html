@@ -8,9 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=4.4" />
-  <link rel="preload" href="/css/style.css?v=4.4" as="style" />
-  <link rel="preload" href="/js/chat.js?v=4.4" as="script" />
+  <link rel="stylesheet" href="/css/style.css?v=4.6" />
+  <link rel="preload" href="/css/style.css?v=4.6" as="style" />
+  <link rel="preload" href="/js/chat.js?v=4.6" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
     /* Dedicated Self-Contained Mobile App Layout Guarantee */
@@ -567,7 +567,7 @@
 
     <!-- Header -->
     <header class="chat-header" id="chatHeader">
-      <div class="header-left">
+      <div class="header-left" id="headerProfileTrigger" role="button" tabindex="0" title="View Partner Profile" aria-label="View Partner Profile">
         <!-- Partner avatar -->
         <div class="header-avatar-container">
           <div id="partnerAvatar" class="header-avatar-placeholder" aria-hidden="true">❤️</div>
@@ -603,6 +603,13 @@
 
         <!-- Settings Dropdown Menu -->
         <div id="settingsDropdown" class="settings-dropdown" role="menu" style="display:none;">
+          <button id="partnerProfileMenuBtn" class="dropdown-item" role="menuitem">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span>Partner Profile ❤️</span>
+          </button>
           <button id="profileMenuBtn" class="dropdown-item" role="menuitem">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -823,6 +830,113 @@
     </div>
   </div>
 
+  <!-- Partner Profile View Modal -->
+  <div class="modal-overlay partner-profile-modal-overlay" id="partnerProfileModal" role="dialog" aria-modal="true" aria-label="Partner Profile" style="display:none;">
+    <div class="profile-modal-card partner-profile-card">
+      <div class="partner-profile-header">
+        <button type="button" class="partner-profile-back" id="partnerProfileBackBtn" aria-label="Go Back">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          <span>Back</span>
+        </button>
+        <h2 class="partner-profile-title">Profile Info</h2>
+        <button type="button" class="partner-profile-close" id="partnerProfileCloseBtn" aria-label="Close profile">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="partner-profile-scrollable-body">
+        <!-- Hero Section with Avatar -->
+        <div class="partner-avatar-hero">
+          <div class="partner-avatar-hero-container" id="partnerAvatarHeroTrigger" role="button" tabindex="0" title="Tap photo to view in full size" aria-label="View profile photo in full screen">
+            <div id="partnerProfileHeroAvatar" class="partner-hero-avatar-placeholder">❤️</div>
+            <div class="partner-hero-zoom-badge">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+              <span>Full Photo</span>
+            </div>
+          </div>
+          
+          <h3 class="partner-hero-name" id="partnerProfileHeroName">...</h3>
+          
+          <div class="partner-hero-username-row">
+            <span class="partner-hero-username" id="partnerProfileHeroUsername">@username</span>
+            <button type="button" class="btn-copy-username" id="copyPartnerUsernameBtn" title="Copy username" aria-label="Copy username">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span id="copyUsernameText">Copy</span>
+            </button>
+          </div>
+
+          <div class="partner-hero-status-pill" id="partnerProfileHeroStatusPill">
+            <span class="partner-status-dot" id="partnerProfileHeroStatusDot"></span>
+            <span id="partnerProfileHeroStatusText">Online</span>
+          </div>
+        </div>
+
+        <!-- Quick Actions Row -->
+        <div class="partner-quick-actions">
+          <button type="button" class="quick-action-btn" id="partnerActionChatBtn">
+            <div class="quick-action-icon chat-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+            </div>
+            <span>Message</span>
+          </button>
+
+          <button type="button" class="quick-action-btn" id="partnerActionSearchBtn">
+            <div class="quick-action-icon search-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </div>
+            <span>Search</span>
+          </button>
+
+          <button type="button" class="quick-action-btn" id="partnerActionThemeBtn">
+            <div class="quick-action-icon theme-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a7 7 0 1 0 10 10"></path></svg>
+            </div>
+            <span>Theme</span>
+          </button>
+        </div>
+
+        <!-- Info List Cards -->
+        <div class="partner-info-section">
+          <div class="partner-info-card">
+            <div class="info-card-icon">💌</div>
+            <div class="info-card-content">
+              <span class="info-card-label">Private Relationship Space</span>
+              <span class="info-card-value">Our Dedicated 1-on-1 Corner ❤️</span>
+            </div>
+          </div>
+
+          <div class="partner-info-card">
+            <div class="info-card-icon">📅</div>
+            <div class="info-card-content">
+              <span class="info-card-label">Member Since</span>
+              <span class="info-card-value" id="partnerProfileJoinedDate">...</span>
+            </div>
+          </div>
+
+          <div class="partner-info-card">
+            <div class="info-card-icon">🔒</div>
+            <div class="info-card-content">
+              <span class="info-card-label">Privacy & Security</span>
+              <span class="info-card-value">Messages and media are private and secure between only the two of you.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Shared Media Gallery Section -->
+        <div class="partner-shared-media-section" id="partnerSharedMediaSection">
+          <div class="shared-media-header">
+            <span class="shared-media-title">Shared Media</span>
+            <span class="shared-media-count" id="partnerSharedMediaCount">0 items</span>
+          </div>
+          <div class="shared-media-grid" id="partnerSharedMediaGrid">
+            <!-- Media items will be injected here -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- Profile Modal -->
   <div class="modal-overlay" id="profileModal" role="dialog" aria-modal="true" aria-label="My Profile" style="display:none;">
     <div class="profile-modal-card">
@@ -1016,10 +1130,10 @@
 
   <!-- Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=4.4"></script>
-  <script src="/js/emoji.js?v=4.4"></script>
-  <script src="/js/media.js?v=4.4"></script>
-  <script src="/js/socket.js?v=4.4"></script>
-  <script src="/js/chat.js?v=4.4"></script>
+  <script src="/js/ui.js?v=4.6"></script>
+  <script src="/js/emoji.js?v=4.6"></script>
+  <script src="/js/media.js?v=4.6"></script>
+  <script src="/js/socket.js?v=4.6"></script>
+  <script src="/js/chat.js?v=4.6"></script>
 </body>
 </html>
