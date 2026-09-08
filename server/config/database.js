@@ -13,6 +13,8 @@ async function connectDatabase() {
   const options = {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 45000,
+    maxPoolSize: 10,
+    minPoolSize: 1,
   };
 
   let retries = 5;

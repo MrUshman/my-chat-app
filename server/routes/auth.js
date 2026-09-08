@@ -1,12 +1,13 @@
 'use strict';
 
+const fs = require('fs');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
-const { saveFile } = require('../services/storageService');
+const { saveFile, isCloudinary } = require('../services/storageService');
 
 const router = express.Router();
 
@@ -199,8 +200,16 @@ router.put('/profile', requireAuth, (req, res, next) => {
     }
 
     if (req.file) {
-      const { url } = await saveFile(req.file);
-      updates.profileImage = url;
+      if (isCloudinary()) {
+        const { url } = await saveFile(req.file);
+        updates.profileImage = url;
+      } else {
+        // Store as permanent Base64 Data URL in MongoDB Atlas (never lost across Render redeploys)
+        const fileBuf = fs.readFileSync(req.file.path);
+        const mime = req.file.mimetype || 'image/jpeg';
+        updates.profileImage = `data:${mime};base64,${fileBuf.toString('base64')}`;
+        try { fs.unlinkSync(req.file.path); } catch (_) {}
+      }
     }
 
     const updatedUser = await User.findByIdAndUpdate(req.user._id, updates, { new: true });

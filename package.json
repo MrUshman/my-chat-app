@@ -4,7 +4,7 @@
   "description": "Private real-time chat app for two people",
   "main": "server/server.js",
   "scripts": {
-    "start": "node server/server.js",
+    "start": "node --max-old-space-size=256 server/server.js",
     "dev": "nodemon server/server.js",
     "seed": "node server/scripts/seed.js"
   },

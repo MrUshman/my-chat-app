@@ -23,7 +23,7 @@ async function runCleanup() {
     // 1. Permanently delete all messages older than 48 hours (text & media)
     const oldMessages = await Message.find({
       createdAt: { $lte: autoDeleteCutoff },
-    });
+    }).select('_id mediaStorageKey').lean();
 
     if (oldMessages.length > 0) {
       console.log(`🧹 48-Hour Cleanup: found ${oldMessages.length} message(s) older than 48 hours.`);
@@ -51,7 +51,7 @@ async function runCleanup() {
       expiresAt: { $lte: now },
       mediaDeleted: false,
       mediaStorageKey: { $ne: null },
-    });
+    }).select('_id mediaStorageKey').lean();
 
     for (const msg of expiredMessages) {
       try {

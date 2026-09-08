@@ -68,6 +68,7 @@ function applyCachedState() {
     if (cachedPartner) {
       partner = JSON.parse(cachedPartner);
       updatePartnerInfo(partner);
+      setPartnerOnline(false, partner.lastSeen);
     }
 
     // Instantly render last 20 messages with 0ms blank screen (filtering out >48h)
@@ -142,6 +143,8 @@ async function init() {
       updatePartnerInfo(partnerUser);
       localStorage.setItem('cached_partner', JSON.stringify(partnerUser));
       setPartnerOnline(Boolean(partnerOnline), partnerUser.lastSeen);
+    } else {
+      setPartnerOnline(false, null);
     }
 
     // Sync messages
@@ -1108,6 +1111,42 @@ function setupSettingsAndProfile() {
     reader.readAsDataURL(file);
   });
 
+function compressAvatarFile(file) {
+  return new Promise((resolve) => {
+    if (!file || !file.type.startsWith('image/')) return resolve(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 500;
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          resolve(blob ? new File([blob], 'avatar.jpg', { type: 'image/jpeg' }) : file);
+        }, 'image/jpeg', 0.88);
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
   // Save profile submission
   profileForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1124,7 +1163,8 @@ function setupSettingsAndProfile() {
       const formData = new FormData();
       formData.append('displayName', newName);
       if (selectedAvatarFile) {
-        formData.append('avatar', selectedAvatarFile);
+        const compressed = await compressAvatarFile(selectedAvatarFile);
+        formData.append('avatar', compressed);
       }
 
       const res = await fetch('/api/auth/profile', {
@@ -1137,6 +1177,8 @@ function setupSettingsAndProfile() {
       const data = await res.json();
       if (res.ok && data.user) {
         currentUser = data.user;
+        localStorage.setItem('cached_user', JSON.stringify(data.user));
+        updateMyProfileUI();
         UI.showToast('Profile updated successfully!', 'success');
 
         // Broadcast profile update via socket to partner
@@ -1157,6 +1199,12 @@ function setupSettingsAndProfile() {
 }
 
 function openProfileModal() {
+  if (!currentUser) {
+    const cached = localStorage.getItem('cached_user');
+    if (cached) {
+      try { currentUser = JSON.parse(cached); } catch(e) {}
+    }
+  }
   if (!currentUser) return;
   selectedAvatarFile = null;
   profileDisplayNameInput.value = currentUser.displayName || '';
@@ -1185,7 +1233,6 @@ function setupPartnerProfile() {
   isPartnerProfileSetupDone = true;
 
   const headerProfileTrigger = document.getElementById('headerProfileTrigger');
-  const partnerProfileMenuBtn = document.getElementById('partnerProfileMenuBtn');
   const partnerProfileModal = document.getElementById('partnerProfileModal');
   const partnerProfileBackBtn = document.getElementById('partnerProfileBackBtn');
   const partnerProfileCloseBtn = document.getElementById('partnerProfileCloseBtn');
@@ -1205,14 +1252,6 @@ function setupPartnerProfile() {
       e.preventDefault();
       openPartnerProfile();
     }
-  });
-
-  // Trigger from settings dropdown menu
-  partnerProfileMenuBtn?.addEventListener('click', () => {
-    if (settingsDropdown) settingsDropdown.style.display = 'none';
-    if (settingsBtn) settingsBtn.classList.remove('active');
-    document.body.classList.remove('menu-open');
-    openPartnerProfile();
   });
 
   // Close buttons
