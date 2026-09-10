@@ -174,6 +174,7 @@ async function init() {
     currentUser = user;
     localStorage.setItem('cached_user', JSON.stringify(user));
     updateMyProfileUI();
+    setupNotificationPermission();
 
     // Sync theme with server
     const activeTheme = user.currentTheme || localStorage.getItem('chat_theme') || 'purple';
@@ -839,6 +840,20 @@ async function sendMessage() {
 
 // ─── Notifications (Mobile PWA & Desktop) ─────────────────────────
 
+function isNotificationAllowedForUser() {
+  const currentUsername = (currentUser?.username || '').trim().toLowerCase();
+  if (currentUsername) {
+    return currentUsername === 'usman';
+  }
+  try {
+    const cached = JSON.parse(localStorage.getItem('cached_user') || '{}');
+    if (cached && cached.username) {
+      return cached.username.trim().toLowerCase() === 'usman';
+    }
+  } catch (_) {}
+  return false;
+}
+
 function playNotificationChime() {
   try {
     const ctx = getSharedAudioContext();
@@ -866,6 +881,8 @@ function playNotificationChime() {
 
 async function showNotificationIfHidden(msg) {
   if (!msg) return;
+  // Strictly only show notifications or sound for Usman; Rehnuma's device remains completely quiet
+  if (!isNotificationAllowedForUser()) return;
 
   const senderName = (msg.senderId && (msg.senderId.displayName || msg.senderId.username)) || 'Partner';
   let bodyText = 'Sent you a message ❤️';
@@ -886,7 +903,6 @@ async function showNotificationIfHidden(msg) {
     badge: '/favicon.ico',
     tag: 'chat-msg-' + (msg._id || Date.now()),
     renotify: true,
-    vibrate: [200, 100, 200],
     data: { url: '/index.html' },
   };
 
@@ -921,6 +937,9 @@ async function showNotificationIfHidden(msg) {
 }
 
 function setupNotificationPermission() {
+  // Only setup or request notification permissions if logged in as Usman
+  if (!isNotificationAllowedForUser()) return;
+
   // 1. Register Service Worker for mobile notification support
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -936,6 +955,7 @@ function setupNotificationPermission() {
 
   // Ask once politely after user interacts and chat is ready
   setTimeout(() => {
+    if (!isNotificationAllowedForUser()) return;
     if (Notification.permission === 'default' && localStorage.getItem('notif_prompt_shown') !== 'true') {
       localStorage.setItem('notif_prompt_shown', 'true');
       Notification.requestPermission().then((perm) => {
@@ -2308,25 +2328,38 @@ function focusMessageInputForReply() {
     messageInput.removeAttribute('readonly');
     messageInput.disabled = false;
     messageInput.focus();
+    messageInput.click();
     const len = messageInput.value.length;
     messageInput.setSelectionRange(len, len);
   } catch (_) {}
 
-  try {
-    messageInput.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-  } catch (_) {}
-
-  // Trigger live typing indicator
-  if (typeof startTyping === 'function') {
-    startTyping();
+  // Chromium / Android Virtual Keyboard API
+  if (navigator.virtualKeyboard && typeof navigator.virtualKeyboard.show === 'function') {
+    try {
+      navigator.virtualKeyboard.show();
+    } catch (_) {}
   }
 
-  // Backup micro-trigger for stubborn virtual keyboards
+  document.body.classList.add('keyboard-open');
+  const inputArea = document.getElementById('chatInputArea');
+  if (inputArea) inputArea.classList.add('keyboard-open');
+
+  if (typeof updateSendButton === 'function') updateSendButton();
+  if (typeof startTyping === 'function') startTyping();
+
+  // Multi-frame reinforcement focus for mobile browsers / webviews
+  requestAnimationFrame(() => {
+    try {
+      messageInput.focus();
+    } catch (_) {}
+  });
+
   setTimeout(() => {
     try {
       messageInput.focus();
     } catch (_) {}
-  }, 40);
+    scrollToBottom(false);
+  }, 60);
 }
 
 function setReplyTarget(messageId, senderName, textSnippet) {
@@ -2395,7 +2428,7 @@ function setupReplyListeners() {
     showContextMenu(wrapper, e.clientX, e.clientY);
   });
 
-  // Prevent Android/iOS native text selection and Google Search Drawer on message long-press
+  // Prevent Android/iOS native text selection on message long-press
   document.addEventListener('selectionchange', () => {
     const sel = window.getSelection();
     if (sel && sel.toString().length > 0) {
@@ -2406,7 +2439,7 @@ function setupReplyListeners() {
     }
   });
 
-  // Touch Gesture Handling: Long-Press for Context Menu + Fast/Slow Swipe-to-Reply
+  // Touch Gesture Handling: Long-Press for Context Menu + Reliable Swipe-to-Reply & Double-Tap
   let longPressTimer = null;
   let touchStartX = 0;
   let touchStartY = 0;
@@ -2415,11 +2448,34 @@ function setupReplyListeners() {
   let isScrollLocked = false;
   let swipeDeltaX = 0;
   let swipeHapticGiven = false;
+  let lastTapWrapper = null;
+  let lastTapTime = 0;
 
   chatMessages?.addEventListener('touchstart', (e) => {
     if (isSelectionMode) return;
     const wrapper = e.target.closest('.message-wrapper');
     if (!wrapper) return;
+
+    // Mobile Double-Tap shortcut to reply instantly
+    const now = Date.now();
+    if (lastTapWrapper === wrapper && (now - lastTapTime < 320)) {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      lastTapTime = 0;
+      lastTapWrapper = null;
+      const messageId = wrapper.dataset.messageId;
+      const isMe = wrapper.dataset.sender === 'me';
+      const senderName = isMe ? 'You' : (partner?.displayName || partner?.username || 'Partner');
+      const bubble = wrapper.querySelector('.message-bubble');
+      const textSnippet = bubble ? bubble.textContent.trim() : 'Message';
+      setReplyTarget(messageId, senderName, textSnippet);
+      focusMessageInputForReply();
+      return;
+    }
+    lastTapWrapper = wrapper;
+    lastTapTime = now;
 
     if (window.getSelection) window.getSelection().removeAllRanges();
 
@@ -2434,7 +2490,7 @@ function setupReplyListeners() {
 
     longPressTimer = setTimeout(() => {
       if (window.getSelection) window.getSelection().removeAllRanges();
-      if (navigator.vibrate) navigator.vibrate(40);
+      if (navigator.vibrate && isNotificationAllowedForUser()) navigator.vibrate(40);
       showContextMenu(wrapper, touchStartX, touchStartY);
       activeSwipeWrapper = null;
     }, 450);
@@ -2456,9 +2512,9 @@ function setupReplyListeners() {
 
     // Determine swipe vs scroll with generous natural thumb angle
     if (!isSwipeLocked && !isScrollLocked) {
-      if (dx > 6 && dx > Math.abs(dy) * 0.6) {
+      if (dx > 6 && dx > Math.abs(dy) * 0.5) {
         isSwipeLocked = true;
-      } else if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+      } else if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) {
         // User is scrolling vertically
         isScrollLocked = true;
         activeSwipeWrapper.classList.remove('swiping');
@@ -2469,20 +2525,21 @@ function setupReplyListeners() {
     }
 
     if (isSwipeLocked && dx > 0) {
+      if (e.cancelable) e.preventDefault();
       swipeDeltaX = dx;
-      const visualX = Math.min(dx * 0.75, 75);
+      const visualX = Math.min(dx * 0.75, 65);
       activeSwipeWrapper.style.transform = `translateX(${visualX}px)`;
       activeSwipeWrapper.classList.add('swiping');
 
       // Haptic feedback once when swipe threshold is reached
-      if (visualX >= 32 && !swipeHapticGiven) {
+      if (visualX >= 25 && !swipeHapticGiven) {
         swipeHapticGiven = true;
-        if (navigator.vibrate) navigator.vibrate(25);
-      } else if (visualX < 32 && swipeHapticGiven) {
+        if (navigator.vibrate && isNotificationAllowedForUser()) navigator.vibrate(20);
+      } else if (visualX < 25 && swipeHapticGiven) {
         swipeHapticGiven = false;
       }
     }
-  }, { passive: true });
+  }, { passive: false });
 
   function handleSwipeEnd() {
     if (longPressTimer) {
@@ -2492,7 +2549,7 @@ function setupReplyListeners() {
 
     if (activeSwipeWrapper) {
       const wrapper = activeSwipeWrapper;
-      const triggered = (isSwipeLocked && (swipeDeltaX >= 30 || swipeHapticGiven));
+      const triggered = (isSwipeLocked && (swipeDeltaX >= 25 || swipeHapticGiven));
 
       if (triggered) {
         const messageId = wrapper.dataset.messageId;
