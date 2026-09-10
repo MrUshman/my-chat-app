@@ -181,6 +181,11 @@ async function uploadAndSendMedia() {
       window.ChatSocket.sendMediaMessage(data.message._id);
     }
 
+    // Play WhatsApp send pop sound
+    if (typeof window.playMessageSentSound === 'function') {
+      window.playMessageSentSound();
+    }
+
     // Reset reply bar if open
     if (typeof window.cancelQuotedReply === 'function') {
       window.cancelQuotedReply();
@@ -391,6 +396,11 @@ async function uploadAndSendVoice() {
     // Broadcast via socket
     if (window.ChatSocket) {
       window.ChatSocket.sendMediaMessage(data.message._id);
+    }
+
+    // Play WhatsApp send pop sound
+    if (typeof window.playMessageSentSound === 'function') {
+      window.playMessageSentSound();
     }
 
     cancelVoicePreview();

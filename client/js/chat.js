@@ -686,6 +686,90 @@ window.toggleAudio = toggleAudio;
 window.seekAudio = seekAudio;
 window.toggleAudioSpeed = toggleAudioSpeed;
 
+// ─── Sound Effects (WhatsApp Sent Pop & Received Chime) ───────────
+
+let sharedAudioCtx = null;
+function getSharedAudioContext() {
+  try {
+    if (!sharedAudioCtx) {
+      const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtxClass) {
+        sharedAudioCtx = new AudioCtxClass();
+      }
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+  } catch (e) {}
+  return sharedAudioCtx;
+}
+
+// Unlock audio on first interaction
+['click', 'keydown', 'touchstart', 'mousedown'].forEach(ev => {
+  window.addEventListener(ev, () => {
+    getSharedAudioContext();
+  }, { passive: true });
+});
+
+function playMessageSentSound() {
+  try {
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => {
+        _playSentTone(ctx);
+      }).catch(() => {});
+    } else {
+      _playSentTone(ctx);
+    }
+  } catch (e) {
+    console.warn('Sent sound error:', e);
+  }
+}
+
+function _playSentTone(ctx) {
+  try {
+    const t = ctx.currentTime;
+
+    // 1. Primary warm "Tuk" body (downward pitch drop 460Hz -> 160Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+
+    osc1.type = 'triangle'; // warm, woody 'tuk' acoustic resonance
+    osc1.frequency.setValueAtTime(480, t);
+    osc1.frequency.exponentialRampToValueAtTime(150, t + 0.055);
+
+    gain1.gain.setValueAtTime(0.42, t);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
+
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+
+    osc1.start(t);
+    osc1.stop(t + 0.065);
+
+    // 2. Crisp micro-click transient for satisfying pop feel
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(920, t);
+    osc2.frequency.exponentialRampToValueAtTime(320, t + 0.02);
+
+    gain2.gain.setValueAtTime(0.22, t);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.start(t);
+    osc2.stop(t + 0.025);
+  } catch (e) {}
+}
+
+window.playMessageSentSound = playMessageSentSound;
+
 // ─── Send Message ─────────────────────────────────────────────────
 
 async function sendMessage() {
@@ -701,6 +785,9 @@ async function sendMessage() {
   const replyToId = currentReplyTarget?.id || null;
   const replyTargetObj = currentReplyTarget ? { ...currentReplyTarget } : null;
   cancelReplyPreview();
+
+  // Play satisfying WhatsApp send pop tone
+  playMessageSentSound();
 
   // Generate a client-side ID to prevent duplicate rendering
   const clientMessageId = `client-${Date.now()}-${Math.random()}`;
@@ -750,6 +837,116 @@ async function sendMessage() {
   }
 }
 
+// ─── Notifications (Mobile PWA & Desktop) ─────────────────────────
+
+function playNotificationChime() {
+  try {
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
+
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, t); // D5 note
+    osc.frequency.exponentialRampToValueAtTime(880, t + 0.12); // A5 note
+
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(t);
+    osc.stop(t + 0.32);
+  } catch (e) {}
+}
+
+async function showNotificationIfHidden(msg) {
+  if (!msg) return;
+
+  const senderName = (msg.senderId && (msg.senderId.displayName || msg.senderId.username)) || 'Partner';
+  let bodyText = 'Sent you a message ❤️';
+  if (msg.type === 'text' && msg.text) {
+    bodyText = msg.text.length > 70 ? msg.text.substring(0, 67) + '...' : msg.text;
+  } else if (msg.type === 'image') {
+    bodyText = '📷 Photo';
+  } else if (msg.type === 'video') {
+    bodyText = '🎥 Video';
+  } else if (msg.type === 'audio') {
+    bodyText = '🎙️ Voice message';
+  }
+
+  const title = `${senderName} ❤️`;
+  const options = {
+    body: bodyText,
+    icon: '/favicon.ico',
+    badge: '/favicon.ico',
+    tag: 'chat-msg-' + (msg._id || Date.now()),
+    renotify: true,
+    vibrate: [200, 100, 200],
+    data: { url: '/index.html' },
+  };
+
+  playNotificationChime();
+
+  // 1. Mobile Android / Service Worker Notification (Primary for mobile)
+  if ('serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.showNotification) {
+        reg.showNotification(title, options);
+        return;
+      }
+    } catch (e) {
+      console.warn('SW notification fallback:', e);
+    }
+  }
+
+  // 2. Desktop Notification fallback
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      const n = new Notification(title, options);
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+      setTimeout(() => n.close(), 5000);
+    } catch (e) {
+      console.warn('Desktop notification constructor error:', e);
+    }
+  }
+}
+
+function setupNotificationPermission() {
+  // 1. Register Service Worker for mobile notification support
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+
+  if (!('Notification' in window)) return;
+
+  // If already decided (granted or denied), never ask again
+  if (Notification.permission !== 'default') return;
+
+  // If already prompted once in previous session, DO NOT nag daily (Strict user requirement)
+  if (localStorage.getItem('notif_prompt_shown') === 'true') return;
+
+  // Ask once politely after user interacts and chat is ready
+  setTimeout(() => {
+    if (Notification.permission === 'default' && localStorage.getItem('notif_prompt_shown') !== 'true') {
+      localStorage.setItem('notif_prompt_shown', 'true');
+      Notification.requestPermission().then((perm) => {
+        if (perm === 'granted') {
+          UI.showToast('Notifications enabled ❤️', 'success');
+        }
+      }).catch(() => {});
+    }
+  }, 4000);
+}
+
 // ─── Receive Message ──────────────────────────────────────────────
 
 function onReceiveMessage(msg) {
@@ -787,14 +984,9 @@ function onReceiveMessage(msg) {
     unreadMessageIds.push(msg._id);
     sendReadReceipts();
 
-    // Browser notification (when tab is not focused)
-    const senderName = msg.senderId.displayName || 'Someone';
-    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      const n = new Notification(`${senderName} ❤️`, {
-        body: msg.type === 'text' ? msg.text : msg.type === 'image' ? '📷 Photo' : msg.type === 'video' ? '🎥 Video' : '🎙️ Voice message',
-        icon: '/favicon.ico',
-      });
-      setTimeout(() => n.close(), 5000);
+    // Browser / Mobile Notification (when tab is not focused or phone in background)
+    if (document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus())) {
+      showNotificationIfHidden(msg);
     }
   }
 }
@@ -1058,10 +1250,8 @@ function setupInputEvents() {
 
   logoutBtn.addEventListener('click', logout);
 
-  // Request notification permission
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
+  // Setup mobile & desktop notification permission (strictly asks once)
+  setupNotificationPermission();
 }
 
 // ─── Settings & Profile Handlers ─────────────────────────────────
@@ -2221,8 +2411,10 @@ function setupReplyListeners() {
   let touchStartX = 0;
   let touchStartY = 0;
   let activeSwipeWrapper = null;
-  let isHorizontalSwipe = false;
+  let isSwipeLocked = false;
+  let isScrollLocked = false;
   let swipeDeltaX = 0;
+  let swipeHapticGiven = false;
 
   chatMessages?.addEventListener('touchstart', (e) => {
     if (isSelectionMode) return;
@@ -2235,8 +2427,10 @@ function setupReplyListeners() {
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
     activeSwipeWrapper = wrapper;
-    isHorizontalSwipe = false;
+    isSwipeLocked = false;
+    isScrollLocked = false;
     swipeDeltaX = 0;
+    swipeHapticGiven = false;
 
     longPressTimer = setTimeout(() => {
       if (window.getSelection) window.getSelection().removeAllRanges();
@@ -2247,35 +2441,46 @@ function setupReplyListeners() {
   }, { passive: true });
 
   chatMessages?.addEventListener('touchmove', (e) => {
-    if (!activeSwipeWrapper) return;
+    if (!activeSwipeWrapper || isScrollLocked) return;
     const touch = e.touches[0];
     const dx = touch.clientX - touchStartX;
     const dy = touch.clientY - touchStartY;
 
     // Movement cancels long-press context menu
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
       }
     }
 
-    // Determine swipe vs scroll
-    if (!isHorizontalSwipe) {
-      if (dx > 8 && Math.abs(dx) > Math.abs(dy)) {
-        isHorizontalSwipe = true;
-      } else if (Math.abs(dy) > 12) {
+    // Determine swipe vs scroll with generous natural thumb angle
+    if (!isSwipeLocked && !isScrollLocked) {
+      if (dx > 6 && dx > Math.abs(dy) * 0.6) {
+        isSwipeLocked = true;
+      } else if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx) * 1.2) {
         // User is scrolling vertically
+        isScrollLocked = true;
+        activeSwipeWrapper.classList.remove('swiping');
+        activeSwipeWrapper.style.transform = '';
         activeSwipeWrapper = null;
         return;
       }
     }
 
-    if (isHorizontalSwipe && dx > 0) {
+    if (isSwipeLocked && dx > 0) {
       swipeDeltaX = dx;
-      const visualX = Math.min(dx * 0.7, 75);
+      const visualX = Math.min(dx * 0.75, 75);
       activeSwipeWrapper.style.transform = `translateX(${visualX}px)`;
       activeSwipeWrapper.classList.add('swiping');
+
+      // Haptic feedback once when swipe threshold is reached
+      if (visualX >= 32 && !swipeHapticGiven) {
+        swipeHapticGiven = true;
+        if (navigator.vibrate) navigator.vibrate(25);
+      } else if (visualX < 32 && swipeHapticGiven) {
+        swipeHapticGiven = false;
+      }
     }
   }, { passive: true });
 
@@ -2287,7 +2492,7 @@ function setupReplyListeners() {
 
     if (activeSwipeWrapper) {
       const wrapper = activeSwipeWrapper;
-      const triggered = isHorizontalSwipe && swipeDeltaX >= 35;
+      const triggered = (isSwipeLocked && (swipeDeltaX >= 30 || swipeHapticGiven));
 
       if (triggered) {
         const messageId = wrapper.dataset.messageId;
@@ -2296,7 +2501,6 @@ function setupReplyListeners() {
         const bubble = wrapper.querySelector('.message-bubble');
         const textSnippet = bubble ? bubble.textContent.trim() : 'Message';
 
-        if (navigator.vibrate) navigator.vibrate(30);
         setReplyTarget(messageId, senderName, textSnippet);
         focusMessageInputForReply();
       }
@@ -2306,12 +2510,28 @@ function setupReplyListeners() {
     }
 
     activeSwipeWrapper = null;
-    isHorizontalSwipe = false;
+    isSwipeLocked = false;
+    isScrollLocked = false;
     swipeDeltaX = 0;
+    swipeHapticGiven = false;
   }
 
   chatMessages?.addEventListener('touchend', handleSwipeEnd, { passive: true });
   chatMessages?.addEventListener('touchcancel', handleSwipeEnd, { passive: true });
+
+  // Double-click to reply (convenient on PC & Desktop)
+  chatMessages?.addEventListener('dblclick', (e) => {
+    const wrapper = e.target.closest('.message-wrapper');
+    if (!wrapper || isSelectionMode) return;
+    const messageId = wrapper.dataset.messageId;
+    const isMe = wrapper.dataset.sender === 'me';
+    const senderName = isMe ? 'You' : (partner?.displayName || partner?.username || 'Partner');
+    const bubble = wrapper.querySelector('.message-bubble');
+    const textSnippet = bubble ? bubble.textContent.trim() : 'Message';
+
+    setReplyTarget(messageId, senderName, textSnippet);
+    focusMessageInputForReply();
+  });
 
   ctxReplyBtn?.addEventListener('click', () => {
     if (!contextMenuTargetWrapper) return;
