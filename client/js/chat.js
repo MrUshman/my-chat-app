@@ -10,7 +10,6 @@
 const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
-const micBtn = document.getElementById('micBtn');
 const inputRow = document.querySelector('.input-row');
 const chatInputArea = document.getElementById('chatInputArea');
 const logoutBtn = document.getElementById('logoutBtn');
@@ -1868,97 +1867,7 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ─── Audio Player Handlers ────────────────────────────────────────
 
-let currentAudioPlayer = null;
-let currentPlayingUrl = null;
-let currentPlayingBtn = null;
-
-function toggleAudio(mediaUrl, progressId, durationId, btn) {
-  const progressFill = document.getElementById(progressId);
-  const durationEl = document.getElementById(durationId);
-
-  // If clicking the currently playing audio
-  if (currentAudioPlayer && currentPlayingUrl === mediaUrl) {
-    if (!currentAudioPlayer.paused) {
-      currentAudioPlayer.pause();
-      btn.innerHTML = `<svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
-      return;
-    } else {
-      currentAudioPlayer.play().then(() => {
-        btn.innerHTML = `<svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
-      }).catch((err) => {
-        console.error('Audio play error:', err);
-        UI.showToast('Could not play audio message.', 'error');
-      });
-      return;
-    }
-  }
-
-  // If another audio was playing, stop it first
-  if (currentAudioPlayer) {
-    currentAudioPlayer.pause();
-    if (currentPlayingBtn) {
-      currentPlayingBtn.innerHTML = `<svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
-    }
-  }
-
-  // Create fresh Audio instance for this mediaUrl
-  const audio = new Audio(mediaUrl);
-  audio.volume = 1.0;
-  audio.muted = false;
-
-  const startPlay = () => {
-    audio.play().then(() => {
-      currentAudioPlayer = audio;
-      currentPlayingUrl = mediaUrl;
-      currentPlayingBtn = btn;
-      btn.innerHTML = `<svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
-    }).catch((err) => {
-      console.error('Audio play error:', err);
-      UI.showToast('Audio playback failed on your device browser.', 'error');
-    });
-  };
-
-  if (audio.readyState === 0) {
-    audio.load();
-  }
-  startPlay();
-
-  audio.ontimeupdate = () => {
-    if (audio.duration && !isNaN(audio.duration)) {
-      const pct = (audio.currentTime / audio.duration) * 100;
-      if (progressFill) progressFill.style.width = `${pct}%`;
-      if (durationEl) durationEl.textContent = UI.formatDuration(audio.currentTime);
-    }
-  };
-
-  audio.onended = () => {
-    if (progressFill) progressFill.style.width = '0%';
-    if (durationEl && audio.duration && !isNaN(audio.duration)) {
-      durationEl.textContent = UI.formatDuration(audio.duration);
-    }
-    btn.innerHTML = `<svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
-    if (currentAudioPlayer === audio) {
-      currentAudioPlayer = null;
-      currentPlayingUrl = null;
-      currentPlayingBtn = null;
-    }
-  };
-}
-
-function seekAudio(event, mediaUrl, progressId, durationId) {
-  if (currentAudioPlayer && currentPlayingUrl === mediaUrl && currentAudioPlayer.duration) {
-    const progressBar = event.currentTarget;
-    const rect = progressBar.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const pct = Math.max(0, Math.min(1, clickX / rect.width));
-    currentAudioPlayer.currentTime = pct * currentAudioPlayer.duration;
-  }
-}
-
-window.toggleAudio = toggleAudio;
-window.seekAudio = seekAudio;
 
 function buildReactionsHtml() { return ''; }
 function reactToMessage() {}
