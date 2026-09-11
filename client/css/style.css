@@ -602,10 +602,6 @@ body.motion-bubbles::before {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-  scroll-behavior: smooth;
-  will-change: scroll-position;
-  transform: translateZ(0);
   padding: 16px 14px;
   display: flex;
   flex-direction: column;
@@ -979,8 +975,6 @@ body.keyboard-open .chat-input-area {
   user-select: none !important;
   touch-action: pan-y;
   will-change: transform;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 54px;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 

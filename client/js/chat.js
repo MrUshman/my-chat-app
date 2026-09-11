@@ -1819,19 +1819,11 @@ async function onReconnect() {
 
 // ─── Scroll ───────────────────────────────────────────────────────
 
-let scrollRafId = null;
 function scrollToBottom(smooth = true) {
   if (!chatMessages) return;
-  if (scrollRafId) cancelAnimationFrame(scrollRafId);
-  scrollRafId = requestAnimationFrame(() => {
-    try {
-      chatMessages.scrollTo({
-        top: chatMessages.scrollHeight,
-        behavior: smooth ? 'smooth' : 'instant',
-      });
-    } catch (_) {
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
+  chatMessages.scrollTo({
+    top: chatMessages.scrollHeight,
+    behavior: smooth ? 'smooth' : 'instant',
   });
 }
 
