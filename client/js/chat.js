@@ -10,6 +10,9 @@
 const chatMessages = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
+const micBtn = document.getElementById('micBtn');
+const inputRow = document.querySelector('.input-row');
+const chatInputArea = document.getElementById('chatInputArea');
 const logoutBtn = document.getElementById('logoutBtn');
 const topLoadingSpinner = document.getElementById('topLoadingSpinner');
 const emptyChat = document.getElementById('emptyChat');
@@ -1245,8 +1248,7 @@ function setupInputEvents() {
   // Instant Typing Start when keyboard opens (focus or touch)
   messageInput.addEventListener('focus', () => {
     document.body.classList.add('keyboard-open');
-    const inputArea = document.getElementById('chatInputArea');
-    if (inputArea) inputArea.classList.add('keyboard-open');
+    if (chatInputArea) chatInputArea.classList.add('keyboard-open');
     updateSendButton();
     handleTyping();
     setTimeout(() => scrollToBottom(false), 200);
@@ -1259,8 +1261,7 @@ function setupInputEvents() {
   // Instant Typing Stop when keyboard closes (blur)
   messageInput.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-open');
-    const inputArea = document.getElementById('chatInputArea');
-    if (inputArea) inputArea.classList.remove('keyboard-open');
+    if (chatInputArea) chatInputArea.classList.remove('keyboard-open');
     stopTyping();
     setTimeout(updateSendButton, 120);
   });
@@ -1269,9 +1270,6 @@ function setupInputEvents() {
   updateSendButton();
 
   logoutBtn.addEventListener('click', logout);
-
-  // Setup mobile & desktop notification permission (strictly asks once)
-  setupNotificationPermission();
 }
 
 // ─── Settings & Profile Handlers ─────────────────────────────────
@@ -1749,9 +1747,6 @@ function updateSendButton() {
   const text = (messageInput && messageInput.value) || '';
   const hasContent = text.trim().length > 0;
 
-  const micBtn = document.getElementById('micBtn');
-  const inputRow = document.querySelector('.input-row');
-
   if (hasContent) {
     // Typing active / has text -> SHOW SEND BUTTON, HIDE RECORD BUTTON
     if (sendBtn) {
@@ -1824,10 +1819,19 @@ async function onReconnect() {
 
 // ─── Scroll ───────────────────────────────────────────────────────
 
+let scrollRafId = null;
 function scrollToBottom(smooth = true) {
-  chatMessages.scrollTo({
-    top: chatMessages.scrollHeight,
-    behavior: smooth ? 'smooth' : 'instant',
+  if (!chatMessages) return;
+  if (scrollRafId) cancelAnimationFrame(scrollRafId);
+  scrollRafId = requestAnimationFrame(() => {
+    try {
+      chatMessages.scrollTo({
+        top: chatMessages.scrollHeight,
+        behavior: smooth ? 'smooth' : 'instant',
+      });
+    } catch (_) {
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
   });
 }
 
@@ -2439,7 +2443,7 @@ function setupReplyListeners() {
     }
   });
 
-  // Touch Gesture Handling: Long-Press for Context Menu + Reliable Swipe-to-Reply & Double-Tap
+  // Touch Gesture Handling: Long-Press for Context Menu + Reliable Swipe-to-Reply
   let longPressTimer = null;
   let touchStartX = 0;
   let touchStartY = 0;
@@ -2448,34 +2452,11 @@ function setupReplyListeners() {
   let isScrollLocked = false;
   let swipeDeltaX = 0;
   let swipeHapticGiven = false;
-  let lastTapWrapper = null;
-  let lastTapTime = 0;
 
   chatMessages?.addEventListener('touchstart', (e) => {
     if (isSelectionMode) return;
     const wrapper = e.target.closest('.message-wrapper');
     if (!wrapper) return;
-
-    // Mobile Double-Tap shortcut to reply instantly
-    const now = Date.now();
-    if (lastTapWrapper === wrapper && (now - lastTapTime < 320)) {
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-      lastTapTime = 0;
-      lastTapWrapper = null;
-      const messageId = wrapper.dataset.messageId;
-      const isMe = wrapper.dataset.sender === 'me';
-      const senderName = isMe ? 'You' : (partner?.displayName || partner?.username || 'Partner');
-      const bubble = wrapper.querySelector('.message-bubble');
-      const textSnippet = bubble ? bubble.textContent.trim() : 'Message';
-      setReplyTarget(messageId, senderName, textSnippet);
-      focusMessageInputForReply();
-      return;
-    }
-    lastTapWrapper = wrapper;
-    lastTapTime = now;
 
     if (window.getSelection) window.getSelection().removeAllRanges();
 
@@ -2575,20 +2556,6 @@ function setupReplyListeners() {
 
   chatMessages?.addEventListener('touchend', handleSwipeEnd, { passive: true });
   chatMessages?.addEventListener('touchcancel', handleSwipeEnd, { passive: true });
-
-  // Double-click to reply (convenient on PC & Desktop)
-  chatMessages?.addEventListener('dblclick', (e) => {
-    const wrapper = e.target.closest('.message-wrapper');
-    if (!wrapper || isSelectionMode) return;
-    const messageId = wrapper.dataset.messageId;
-    const isMe = wrapper.dataset.sender === 'me';
-    const senderName = isMe ? 'You' : (partner?.displayName || partner?.username || 'Partner');
-    const bubble = wrapper.querySelector('.message-bubble');
-    const textSnippet = bubble ? bubble.textContent.trim() : 'Message';
-
-    setReplyTarget(messageId, senderName, textSnippet);
-    focusMessageInputForReply();
-  });
 
   ctxReplyBtn?.addEventListener('click', () => {
     if (!contextMenuTargetWrapper) return;
