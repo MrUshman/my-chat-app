@@ -121,9 +121,9 @@ const io = new Server(server, {
     credentials: true,
     methods: ['GET', 'POST'],
   },
-  // Fast disconnect detection for mobile / desktop
-  pingTimeout: 10000,
-  pingInterval: 10000,
+  // Fast disconnect detection for mobile / desktop (5s)
+  pingTimeout: 5000,
+  pingInterval: 5000,
 });
 
 app.set('io', io);

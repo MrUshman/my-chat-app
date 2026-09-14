@@ -166,12 +166,19 @@ document.addEventListener('keydown', (e) => {
 // ─── Time Formatting ──────────────────────────────────────────────
 
 /**
- * Format a date to "10:32 PM" or "10:32" depending on locale
+ * Format a date to 12-hour format with AM/PM (e.g. "09:49 AM", "02:30 PM")
  */
 function formatTime(date) {
   if (!date) return '';
   const d = new Date(date);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isNaN(d.getTime())) return '';
+  let hours = d.getHours();
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 becomes 12
+  const hoursStr = hours.toString().padStart(2, '0');
+  return `${hoursStr}:${minutes} ${ampm}`;
 }
 
 /**
@@ -196,11 +203,12 @@ function formatDateLabel(date) {
 }
 
 /**
- * Format a lastSeen date to human-readable string
+ * Format a lastSeen date to human-readable string with 12-hour AM/PM
  */
 function formatLastSeen(date) {
   if (!date) return 'Last seen a while ago';
   const d = new Date(date);
+  if (isNaN(d.getTime())) return 'Last seen a while ago';
   const now = new Date();
   const diffMs = now - d;
   const diffMins = Math.floor(diffMs / 60000);
@@ -222,11 +230,15 @@ function formatDuration(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ─── Auto-resize textarea ─────────────────────────────────────────
+// ─── Auto-resize textarea (Smooth, Lag-free) ───────────────────────
 
 function autoResize(textarea) {
+  if (!textarea) return;
   textarea.style.height = 'auto';
-  textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+  const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 120) + 'px';
+  if (textarea.style.height !== newHeight) {
+    textarea.style.height = newHeight;
+  }
 }
 
 // ─── Exports (module-style using window object) ───────────────────

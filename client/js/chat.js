@@ -160,58 +160,71 @@ async function init() {
   setupScrollObserver();
   setupMobileBackButtonHandling();
 
-  // 2. Parallel Network Fetch (cuts network wait time by 50%)
-  try {
-    const [authRes, messagesRes] = await Promise.all([
-      fetch('/api/auth/me', { credentials: 'include', headers: getAuthHeaders() }),
-      fetch('/api/messages?limit=1000', { credentials: 'include', headers: getAuthHeaders() }),
-    ]);
-
-    if (!authRes.ok) {
-      window.location.replace('/login.html');
-      return;
-    }
-
-    const { user, partner: partnerUser, partnerOnline } = await authRes.json();
-    currentUser = user;
-    localStorage.setItem('cached_user', JSON.stringify(user));
-    updateMyProfileUI();
-    setupNotificationPermission();
-
-    // Sync theme with server
-    const activeTheme = user.currentTheme || localStorage.getItem('chat_theme') || 'purple';
-    const activeMotion = user.currentMotion || localStorage.getItem('chat_motion') || 'floating-hearts';
-    applyThemeAndMotion(activeTheme, activeMotion);
-    localStorage.setItem('chat_theme', activeTheme);
-    localStorage.setItem('chat_motion', activeMotion);
-
-    if (partnerUser) {
-      updatePartnerInfo(partnerUser);
-      localStorage.setItem('cached_partner', JSON.stringify(partnerUser));
-      setPartnerOnline(Boolean(partnerOnline), partnerUser.lastSeen);
-    } else {
-      setPartnerOnline(false, null);
-    }
-
-    // Sync messages
-    if (messagesRes.ok) {
-      const { messages, hasMore } = await messagesRes.json();
-      hasMoreMessages = Boolean(hasMore);
-
-      if (messages.length === 0 && renderedMessageIds.size === 0) {
-        emptyChat.style.display = 'flex';
-      } else if (messages.length > 0) {
-        emptyChat.style.display = 'none';
-        clearAndRenderInitialMessages(messages);
-      }
-    }
-  } catch (err) {
-    console.error('Init parallel fetch error:', err);
-    // If offline but cache rendered, let user stay in chat!
-    if (!currentUser) {
-      UI.showToast('Failed to connect to chat. Please refresh.', 'error');
-    }
+  // Check if socket already received buffered partner status
+  if (window._lastPartnerStatus) {
+    if (window._lastPartnerStatus.partner) updatePartnerInfo(window._lastPartnerStatus.partner);
+    setPartnerOnline(window._lastPartnerStatus.isOnline, window._lastPartnerStatus.lastSeen);
   }
+
+  // 2. Fetch auth/me first for instant user & partner & online sync (takes <25ms)
+  const authPromise = fetch('/api/auth/me', { credentials: 'include', headers: getAuthHeaders() })
+    .then(async (authRes) => {
+      if (!authRes.ok) {
+        window.location.replace('/login.html');
+        return;
+      }
+
+      const { user, partner: partnerUser, partnerOnline } = await authRes.json();
+      currentUser = user;
+      localStorage.setItem('cached_user', JSON.stringify(user));
+      updateMyProfileUI();
+      setupNotificationPermission();
+
+      // Sync theme with server
+      const activeTheme = user.currentTheme || localStorage.getItem('chat_theme') || 'purple';
+      const activeMotion = user.currentMotion || localStorage.getItem('chat_motion') || 'floating-hearts';
+      applyThemeAndMotion(activeTheme, activeMotion);
+      localStorage.setItem('chat_theme', activeTheme);
+      localStorage.setItem('chat_motion', activeMotion);
+
+      if (partnerUser) {
+        updatePartnerInfo(partnerUser);
+        localStorage.setItem('cached_partner', JSON.stringify(partnerUser));
+        // Prefer live real-time socket status if already received, else auth status
+        const onlineState = window._lastPartnerStatus ? window._lastPartnerStatus.isOnline : Boolean(partnerOnline);
+        const lastSeenState = window._lastPartnerStatus?.lastSeen || partnerUser.lastSeen;
+        setPartnerOnline(onlineState, lastSeenState);
+      } else {
+        setPartnerOnline(false, null);
+      }
+    })
+    .catch((err) => {
+      console.error('Init auth error:', err);
+      if (!currentUser) {
+        UI.showToast('Failed to connect to chat. Please refresh.', 'error');
+      }
+    });
+
+  // 3. Fetch messages concurrently (non-blocking for status)
+  const messagesPromise = fetch('/api/messages?limit=1000', { credentials: 'include', headers: getAuthHeaders() })
+    .then(async (messagesRes) => {
+      if (messagesRes.ok) {
+        const { messages, hasMore } = await messagesRes.json();
+        hasMoreMessages = Boolean(hasMore);
+
+        if (messages.length === 0 && renderedMessageIds.size === 0) {
+          emptyChat.style.display = 'flex';
+        } else if (messages.length > 0) {
+          emptyChat.style.display = 'none';
+          clearAndRenderInitialMessages(messages);
+        }
+      }
+    })
+    .catch((err) => {
+      console.error('Init messages error:', err);
+    });
+
+  await Promise.allSettled([authPromise, messagesPromise]);
 }
 
 // ─── View Screen Navigation ──────────────────────────────────────
@@ -1217,13 +1230,11 @@ function hideTyping(fromUserId = null) {
 // ─── Input Events ─────────────────────────────────────────────────
 
 function setupInputEvents() {
-  // Auto-resize textarea & immediate send button toggle across all input/key/composition events
-  ['input', 'beforeinput', 'keyup', 'keydown', 'change', 'paste', 'cut', 'compositionstart', 'compositionupdate', 'compositionend'].forEach(evt => {
-    messageInput.addEventListener(evt, () => {
-      UI.autoResize(messageInput);
-      updateSendButton();
-      handleTyping();
-    });
+  // Ultra-smooth, lag-free input handler — only fires on real text modifications
+  messageInput.addEventListener('input', () => {
+    UI.autoResize(messageInput);
+    updateSendButton();
+    handleTyping();
   });
 
   // Send on Enter (Shift+Enter = new line)
@@ -1244,29 +1255,25 @@ function setupInputEvents() {
     sendMessage();
   });
 
-  // Instant Typing Start when keyboard opens (focus or touch)
+  // Instant Typing Start when keyboard opens (focus)
   messageInput.addEventListener('focus', () => {
     document.body.classList.add('keyboard-open');
     if (chatInputArea) chatInputArea.classList.add('keyboard-open');
-    updateSendButton();
+    updateSendButton(true);
     handleTyping();
     setTimeout(() => scrollToBottom(false), 200);
   });
-
-  messageInput.addEventListener('touchstart', () => {
-    handleTyping();
-  }, { passive: true });
 
   // Instant Typing Stop when keyboard closes (blur)
   messageInput.addEventListener('blur', () => {
     document.body.classList.remove('keyboard-open');
     if (chatInputArea) chatInputArea.classList.remove('keyboard-open');
     stopTyping();
-    setTimeout(updateSendButton, 120);
+    setTimeout(() => updateSendButton(true), 120);
   });
 
   // Initialize send button state
-  updateSendButton();
+  updateSendButton(true);
 
   logoutBtn.addEventListener('click', logout);
 }
@@ -1742,9 +1749,18 @@ function populateSharedMediaGallery() {
 window.openPartnerProfile = openPartnerProfile;
 window.closePartnerProfile = closePartnerProfile;
 
-function updateSendButton() {
+let lastHasContentState = null;
+
+function updateSendButton(force = false) {
   const text = (messageInput && messageInput.value) || '';
   const hasContent = text.trim().length > 0;
+
+  if (!force && lastHasContentState === hasContent) {
+    return; // State didn't change — skip DOM mutations during typing
+  }
+  lastHasContentState = hasContent;
+
+  const currentMicBtn = document.getElementById('micBtn') || (typeof micBtn !== 'undefined' ? micBtn : null);
 
   if (hasContent) {
     // Typing active / has text -> SHOW SEND BUTTON, HIDE RECORD BUTTON
@@ -1755,9 +1771,9 @@ function updateSendButton() {
       sendBtn.style.setProperty('opacity', '1', 'important');
       sendBtn.classList.add('has-content');
     }
-    if (micBtn) {
-      micBtn.style.setProperty('display', 'none', 'important');
-      micBtn.style.setProperty('visibility', 'hidden', 'important');
+    if (currentMicBtn) {
+      currentMicBtn.style.setProperty('display', 'none', 'important');
+      currentMicBtn.style.setProperty('visibility', 'hidden', 'important');
     }
     if (inputRow) inputRow.classList.add('has-text');
   } else {
@@ -1768,9 +1784,9 @@ function updateSendButton() {
       sendBtn.style.setProperty('visibility', 'hidden', 'important');
       sendBtn.classList.remove('has-content');
     }
-    if (micBtn) {
-      micBtn.style.setProperty('display', 'flex', 'important');
-      micBtn.style.setProperty('visibility', 'visible', 'important');
+    if (currentMicBtn) {
+      currentMicBtn.style.setProperty('display', 'flex', 'important');
+      currentMicBtn.style.setProperty('visibility', 'visible', 'important');
     }
     if (inputRow) inputRow.classList.remove('has-text');
   }
@@ -2800,3 +2816,8 @@ window.Chat = {
 
 // ─── Start ────────────────────────────────────────────────────────
 init();
+
+// Request live partner status from socket immediately after initialization
+if (window.ChatSocket && window.ChatSocket.requestPartnerStatus) {
+  window.ChatSocket.requestPartnerStatus();
+}

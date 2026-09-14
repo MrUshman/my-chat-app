@@ -367,6 +367,32 @@ function initChatSocket(io) {
       }
     });
 
+    // ─── Explicit Client Online / Visibility Return ────────────────────────
+    socket.on('client_online', () => {
+      registerUser(userId, socket.id);
+      socket.broadcast.emit('user_online', {
+        userId,
+        displayName: user.displayName,
+      });
+    });
+
+    // ─── Query Partner Status on Demand (Instant Sync) ─────────────────────
+    socket.on('get_partner_status', async () => {
+      try {
+        const partner = await User.findOne({ _id: { $ne: user._id } }).select('username displayName profileImage lastSeen');
+        if (partner) {
+          const partnerOnline = isUserOnline(partner._id.toString(), io);
+          socket.emit('partner_status', {
+            partner: partner.toSafeObject(),
+            isOnline: partnerOnline,
+            lastSeen: partner.lastSeen,
+          });
+        }
+      } catch (err) {
+        console.error('get_partner_status socket error:', err.message);
+      }
+    });
+
     // ─── Explicit Client Offline Event (on tab close/hide) ───────────────────
     socket.on('client_offline', async () => {
       unregisterUser(userId, socket.id);

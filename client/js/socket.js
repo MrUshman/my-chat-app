@@ -68,6 +68,8 @@ function initSocket() {
 
   // ─── Lifecycle & Tab Visibility Management ──────────────────────
 
+  // ─── Lifecycle & Tab Visibility Management ──────────────────────
+
   // Disconnect cleanly when user closes tab or navigates away
   window.addEventListener('beforeunload', () => {
     if (socket && socket.connected) {
@@ -83,17 +85,29 @@ function initSocket() {
     }
   });
 
-  // Re-connect immediately when mobile user returns to tab / unlocks screen
+  // Re-connect / sync immediately when mobile user returns to tab / unlocks screen
   window.addEventListener('pageshow', () => {
-    if (socket && socket.disconnected) {
-      socket.connect();
+    if (socket) {
+      if (socket.disconnected) socket.connect();
+      else if (socket.connected) {
+        try { socket.emit('client_online'); } catch(e) {}
+        try { socket.emit('get_partner_status'); } catch(e) {}
+      }
     }
   });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      if (socket && socket.disconnected) {
-        socket.connect();
+      if (socket) {
+        if (socket.disconnected) socket.connect();
+        else if (socket.connected) {
+          try { socket.emit('client_online'); } catch(e) {}
+          try { socket.emit('get_partner_status'); } catch(e) {}
+        }
+      }
+    } else if (document.visibilityState === 'hidden') {
+      if (socket && socket.connected) {
+        try { socket.emit('client_offline'); } catch(e) {}
       }
     }
   });
@@ -101,25 +115,25 @@ function initSocket() {
   // ─── Chat Events ──────────────────────────────────────────────────
 
   socket.on('receive_message', (message) => {
-    if (window.Chat) {
+    if (window.Chat && window.Chat.onReceiveMessage) {
       window.Chat.onReceiveMessage(message);
     }
   });
 
   socket.on('message_delivered', ({ messageId, deliveredAt }) => {
-    if (window.Chat) {
+    if (window.Chat && window.Chat.updateMessageStatus) {
       window.Chat.updateMessageStatus(messageId, 'delivered', deliveredAt);
     }
   });
 
   socket.on('messages_delivered', ({ messageIds, deliveredAt }) => {
-    if (window.Chat) {
+    if (window.Chat && window.Chat.updateMessageStatus) {
       messageIds.forEach(id => window.Chat.updateMessageStatus(id, 'delivered', deliveredAt));
     }
   });
 
   socket.on('messages_read', ({ messageIds, readAt }) => {
-    if (window.Chat && Array.isArray(messageIds)) {
+    if (window.Chat && Array.isArray(messageIds) && window.Chat.updateMessageStatus) {
       messageIds.forEach(id => window.Chat.updateMessageStatus(id, 'read', readAt));
     }
   });
@@ -141,29 +155,35 @@ function initSocket() {
   socket.on('typing_start', (data) => {
     const displayName = data?.displayName;
     const userId = data?.userId;
-    if (window.Chat) window.Chat.showTyping(displayName, userId);
+    if (window.Chat && window.Chat.showTyping) window.Chat.showTyping(displayName, userId);
   });
 
   socket.on('typing_stop', (data) => {
     const userId = data?.userId;
-    if (window.Chat) window.Chat.hideTyping(userId);
+    if (window.Chat && window.Chat.hideTyping) window.Chat.hideTyping(userId);
   });
 
-  // ─── Presence Events ──────────────────────────────────────────────
+  // ─── Presence Events (Buffered for Instant Accuracy) ─────────────
 
   socket.on('partner_status', ({ partner, isOnline, lastSeen }) => {
-    if (window.Chat) {
-      if (partner) window.Chat.updatePartnerInfo(partner);
+    window._lastPartnerStatus = { partner, isOnline, lastSeen };
+    if (window.Chat && window.Chat.setPartnerOnline) {
+      if (partner && window.Chat.updatePartnerInfo) window.Chat.updatePartnerInfo(partner);
       window.Chat.setPartnerOnline(isOnline, lastSeen);
     }
   });
 
   socket.on('user_online', ({ userId }) => {
-    if (window.Chat) window.Chat.setPartnerOnline(true);
+    if (window._lastPartnerStatus) window._lastPartnerStatus.isOnline = true;
+    if (window.Chat && window.Chat.setPartnerOnline) window.Chat.setPartnerOnline(true);
   });
 
   socket.on('user_offline', ({ userId, lastSeen }) => {
-    if (window.Chat) window.Chat.setPartnerOnline(false, lastSeen);
+    if (window._lastPartnerStatus) {
+      window._lastPartnerStatus.isOnline = false;
+      window._lastPartnerStatus.lastSeen = lastSeen;
+    }
+    if (window.Chat && window.Chat.setPartnerOnline) window.Chat.setPartnerOnline(false, lastSeen);
   });
 
   socket.on('theme_updated', ({ theme, motion, updatedBy }) => {
@@ -270,6 +290,12 @@ function emitThemeUpdate(theme, motion) {
   }
 }
 
+function requestPartnerStatus() {
+  if (socket?.connected) {
+    socket.emit('get_partner_status');
+  }
+}
+
 // Initialize
 const socketInstance = initSocket();
 
@@ -283,5 +309,6 @@ window.ChatSocket = {
   emitMessageReaction,
   emitMessageDeleted,
   emitThemeUpdate,
+  requestPartnerStatus,
   get connected() { return socket?.connected || false; },
 };
