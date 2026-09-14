@@ -1806,12 +1806,15 @@ function stopTyping() {
   clearTimeout(typingTimeout);
 }
 
-// ─── Reconnect ────────────────────────────────────────────────────
+// ─── Reconnect (Debounced & Light) ────────────────────────────────
+
+let lastReconnectFetchTime = 0;
 
 async function onReconnect() {
-  // Re-fetch recent messages to catch any missed while offline
-  // We only load new messages (don't clear existing)
-  // Simple approach: reload last page and dedup via renderedMessageIds
+  const now = Date.now();
+  if (now - lastReconnectFetchTime < 5000) return; // Prevent duplicate rapid requests
+  lastReconnectFetchTime = now;
+
   try {
     const res = await fetch('/api/messages?limit=20', { credentials: 'include', headers: getAuthHeaders() });
     if (!res.ok) return;
@@ -1820,7 +1823,7 @@ async function onReconnect() {
     for (const msg of messages) {
       renderMessage(msg, 'append');
     }
-    scrollToBottom();
+    scrollToBottom(false);
   } catch (err) {
     console.error('Reconnect re-fetch error:', err);
   }

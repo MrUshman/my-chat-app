@@ -22,7 +22,9 @@ function initSocket() {
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 10000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000,
+    transports: ['websocket', 'polling'],
   });
 
   // ─── Connection Events ────────────────────────────────────────────
@@ -209,19 +211,62 @@ function hideBanner() {
 // ─── Public API ───────────────────────────────────────────────────
 
 /**
- * Send a text message via socket
+ * Send a text message via socket (with auto-retry and timeout protection)
  */
 function sendTextMessage(text, clientMessageId, replyTo) {
   return new Promise((resolve, reject) => {
-    if (!socket?.connected) {
-      reject(new Error('Not connected'));
-      return;
-    }
+    let finished = false;
 
-    socket.emit('send_message', { text, clientMessageId, replyTo }, (response) => {
-      if (response?.error) reject(new Error(response.error));
-      else resolve(response);
-    });
+    const doSend = () => {
+      if (!socket || !socket.connected) {
+        if (!finished) {
+          finished = true;
+          reject(new Error('Connecting... please wait a moment.'));
+        }
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        if (!finished) {
+          finished = true;
+          reject(new Error('Send timed out.'));
+        }
+      }, 10000);
+
+      socket.emit('send_message', { text, clientMessageId, replyTo }, (response) => {
+        clearTimeout(timer);
+        if (finished) return;
+        finished = true;
+        if (response?.error) reject(new Error(response.error));
+        else resolve(response);
+      });
+    };
+
+    if (socket && socket.connected) {
+      doSend();
+    } else if (socket) {
+      // If socket is reconnecting, wait up to 4s for connection
+      socket.connect();
+      const onConnectOnce = () => {
+        cleanup();
+        doSend();
+      };
+      const onTimeout = () => {
+        cleanup();
+        if (!finished) {
+          finished = true;
+          reject(new Error('Connection interrupted. Please try again.'));
+        }
+      };
+      const waitTimer = setTimeout(onTimeout, 4000);
+      const cleanup = () => {
+        clearTimeout(waitTimer);
+        socket.off('connect', onConnectOnce);
+      };
+      socket.once('connect', onConnectOnce);
+    } else {
+      reject(new Error('Not connected'));
+    }
   });
 }
 
