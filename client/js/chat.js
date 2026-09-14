@@ -1061,10 +1061,6 @@ function setupScrollObserver() {
     }
   }, { passive: true });
 
-  chatMessages.addEventListener('touchmove', () => {
-    triggerAutoLoad();
-  }, { passive: true });
-
   // 2. IntersectionObserver for zero-lag background fetching when scrolling near top
   if ('IntersectionObserver' in window && topLoadingSpinner) {
     const observer = new IntersectionObserver((entries) => {
@@ -2426,8 +2422,12 @@ function setupReplyListeners() {
       if (e.cancelable) e.preventDefault();
       swipeDeltaX = dx;
       const visualX = Math.min(dx * 0.75, 65);
-      activeSwipeWrapper.style.transform = `translateX(${visualX}px)`;
-      activeSwipeWrapper.classList.add('swiping');
+      requestAnimationFrame(() => {
+        if (activeSwipeWrapper) {
+          activeSwipeWrapper.style.transform = `translateX(${visualX}px)`;
+          activeSwipeWrapper.classList.add('swiping');
+        }
+      });
 
       // Haptic feedback once when swipe threshold is reached
       if (visualX >= 25 && !swipeHapticGiven) {
