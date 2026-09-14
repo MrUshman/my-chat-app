@@ -665,7 +665,7 @@ body.motion-bubbles::before {
   to { transform: rotate(360deg); }
 }
 
-/* Chat Input Area — Mobile-First Fixed Bottom Bar */
+/* Chat Input Area — Mobile-First Fixed Bottom Bar (Instant 0ms Keyboard Response) */
 .chat-input-area {
   flex-shrink: 0;
   width: 100%;
@@ -677,13 +677,6 @@ body.motion-bubbles::before {
   position: relative !important;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
   transform: translateZ(0);
-  transition: padding-bottom 0.15s ease !important;
-}
-
-.chat-input-area:focus-within,
-.chat-input-area.keyboard-open,
-body.keyboard-open .chat-input-area {
-  padding-bottom: 15px !important;
 }
 
 .voice-recorder,
@@ -718,12 +711,10 @@ body.keyboard-open .chat-input-area {
   display: flex;
   align-items: center;
   gap: 4px;
-  transition: var(--transition-fast);
 }
 
 .message-input-wrapper:focus-within {
   border-color: var(--accent-purple);
-  box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -742,6 +733,8 @@ body.keyboard-open .chat-input-area {
   outline: none;
   padding: 6px 4px;
   line-height: 1.4;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .message-input-wrapper .input-btn {

@@ -1251,21 +1251,19 @@ function setupInputEvents() {
     sendMessage();
   });
 
-  // Instant Typing Start when keyboard opens (focus)
+  // Instant, lag-free focus handler (0ms keyboard response)
   messageInput.addEventListener('focus', () => {
-    document.body.classList.add('keyboard-open');
-    if (chatInputArea) chatInputArea.classList.add('keyboard-open');
-    updateSendButton(true);
+    updateSendButton();
     handleTyping();
-    setTimeout(() => scrollToBottom(false), 200);
+    requestAnimationFrame(() => {
+      scrollToBottom(false);
+    });
   });
 
-  // Instant Typing Stop when keyboard closes (blur)
+  // Instant blur handler
   messageInput.addEventListener('blur', () => {
-    document.body.classList.remove('keyboard-open');
-    if (chatInputArea) chatInputArea.classList.remove('keyboard-open');
     stopTyping();
-    setTimeout(() => updateSendButton(true), 120);
+    updateSendButton();
   });
 
   // Initialize send button state
