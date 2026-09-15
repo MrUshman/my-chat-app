@@ -234,6 +234,14 @@ function formatDuration(seconds) {
 
 function autoResize(textarea) {
   if (!textarea) return;
+  const val = textarea.value;
+  // Zero-reflow fast path for single line typing / backspacing
+  if (!val || (!val.includes('\n') && val.length < 35)) {
+    if (textarea.style.height && textarea.style.height !== '24px') {
+      textarea.style.height = '24px';
+    }
+    return;
+  }
   textarea.style.height = 'auto';
   const newHeight = Math.min(Math.max(textarea.scrollHeight, 24), 120) + 'px';
   if (textarea.style.height !== newHeight) {

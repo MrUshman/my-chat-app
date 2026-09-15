@@ -50,9 +50,9 @@ window.getAuthHeaders = getAuthHeaders;
 // ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
 
 // Invalidate stale local cache from previous versions
-if (localStorage.getItem('chat_cache_version') !== 'v8.0') {
+if (localStorage.getItem('chat_cache_version') !== 'v9.8') {
   localStorage.removeItem('cached_messages');
-  localStorage.setItem('chat_cache_version', 'v8.0');
+  localStorage.setItem('chat_cache_version', 'v9.8');
 }
 
 function applyCachedState() {
@@ -111,8 +111,8 @@ function saveMessagesToCache(messages) {
   try {
     if (Array.isArray(messages) && messages.length > 0 && currentUser?._id) {
       const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      // Store up to 500 latest messages within 7 days for instant 0ms reload
-      const valid = messages.filter(m => new Date(m.createdAt).getTime() >= cutoff).slice(-500);
+      // Store up to 50 latest messages within 7 days for lightweight instant 0ms reload
+      const valid = messages.filter(m => new Date(m.createdAt).getTime() >= cutoff).slice(-50);
       localStorage.setItem('cached_messages', JSON.stringify(valid));
       localStorage.setItem('cached_messages_user', currentUser._id);
     }
@@ -205,8 +205,8 @@ async function init() {
       }
     });
 
-  // 3. Fetch messages concurrently (non-blocking for status)
-  const messagesPromise = fetch('/api/messages?limit=1000', { credentials: 'include', headers: getAuthHeaders() })
+  // 3. Fetch messages concurrently (non-blocking for status, lightweight initial batch)
+  const messagesPromise = fetch('/api/messages?limit=50', { credentials: 'include', headers: getAuthHeaders() })
     .then(async (messagesRes) => {
       if (messagesRes.ok) {
         const { messages, hasMore } = await messagesRes.json();
@@ -264,7 +264,7 @@ async function loadPartnerInfo() {
 
 // ─── Load Messages (paginated) ────────────────────────────────────
 
-async function loadMessages(before = null, limit = 500) {
+async function loadMessages(before = null, limit = 50) {
   if (isLoadingMessages) return;
   isLoadingMessages = true;
 
@@ -2813,6 +2813,8 @@ window.Chat = {
   updateMessageReactions,
   onMessageDeleted,
   onThemeUpdated,
+  getPartner: () => partner,
+  getCurrentUser: () => currentUser,
 };
 
 // ─── Start ────────────────────────────────────────────────────────

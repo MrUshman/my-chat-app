@@ -176,11 +176,21 @@ function initSocket() {
   });
 
   socket.on('user_online', ({ userId }) => {
+    const currentPartner = window.Chat && window.Chat.getPartner ? window.Chat.getPartner() : null;
+    const partnerId = currentPartner?._id?.toString() || window._lastPartnerStatus?.partner?._id?.toString();
+    if (partnerId && userId && userId.toString() !== partnerId) {
+      return; // Ignore online events for other users or self
+    }
     if (window._lastPartnerStatus) window._lastPartnerStatus.isOnline = true;
     if (window.Chat && window.Chat.setPartnerOnline) window.Chat.setPartnerOnline(true);
   });
 
   socket.on('user_offline', ({ userId, lastSeen }) => {
+    const currentPartner = window.Chat && window.Chat.getPartner ? window.Chat.getPartner() : null;
+    const partnerId = currentPartner?._id?.toString() || window._lastPartnerStatus?.partner?._id?.toString();
+    if (partnerId && userId && userId.toString() !== partnerId) {
+      return; // Ignore offline events for other users or self
+    }
     if (window._lastPartnerStatus) {
       window._lastPartnerStatus.isOnline = false;
       window._lastPartnerStatus.lastSeen = lastSeen;
