@@ -221,61 +221,65 @@ function hideBanner() {
 // ─── Public API ───────────────────────────────────────────────────
 
 /**
- * Send a text message via socket (with auto-retry and timeout protection)
+ * Send a text message via socket (with auto-retry and instant HTTP REST fallback)
  */
 function sendTextMessage(text, clientMessageId, replyTo) {
   return new Promise((resolve, reject) => {
-    let finished = false;
+    let resolved = false;
 
-    const doSend = () => {
-      if (!socket || !socket.connected) {
-        if (!finished) {
-          finished = true;
-          reject(new Error('Connecting... please wait a moment.'));
+    // Fast HTTP REST fallback helper (guarantees message is never lost or stuck)
+    const fallbackHttpSend = async (reason) => {
+      if (resolved) return;
+      try {
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(typeof window.getAuthHeaders === 'function' ? window.getAuthHeaders() : {}),
+        };
+        const res = await fetch('/api/messages', {
+          method: 'POST',
+          credentials: 'include',
+          headers,
+          body: JSON.stringify({ text, clientMessageId, replyTo }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to send message via HTTP');
         }
-        return;
+        const data = await res.json();
+        if (!resolved) {
+          resolved = true;
+          resolve({ success: true, messageId: data.messageId || data.message?._id });
+        }
+      } catch (httpErr) {
+        if (!resolved) {
+          resolved = true;
+          reject(new Error(httpErr.message || reason || 'Message send failed'));
+        }
       }
-
-      const timer = setTimeout(() => {
-        if (!finished) {
-          finished = true;
-          reject(new Error('Send timed out.'));
-        }
-      }, 10000);
-
-      socket.emit('send_message', { text, clientMessageId, replyTo }, (response) => {
-        clearTimeout(timer);
-        if (finished) return;
-        finished = true;
-        if (response?.error) reject(new Error(response.error));
-        else resolve(response);
-      });
     };
 
+    // If socket is actively connected, attempt via socket with a 3.5s timeout before fallback
     if (socket && socket.connected) {
-      doSend();
-    } else if (socket) {
-      // If socket is reconnecting, wait up to 4s for connection
-      socket.connect();
-      const onConnectOnce = () => {
-        cleanup();
-        doSend();
-      };
-      const onTimeout = () => {
-        cleanup();
-        if (!finished) {
-          finished = true;
-          reject(new Error('Connection interrupted. Please try again.'));
+      const socketTimer = setTimeout(() => {
+        if (!resolved) {
+          console.warn('Socket send_message taking >3.5s, seamlessly switching to HTTP fallback...');
+          fallbackHttpSend('Socket timeout');
         }
-      };
-      const waitTimer = setTimeout(onTimeout, 4000);
-      const cleanup = () => {
-        clearTimeout(waitTimer);
-        socket.off('connect', onConnectOnce);
-      };
-      socket.once('connect', onConnectOnce);
+      }, 3500);
+
+      socket.emit('send_message', { text, clientMessageId, replyTo }, (response) => {
+        clearTimeout(socketTimer);
+        if (resolved) return;
+        if (response?.error) {
+          fallbackHttpSend(response.error);
+        } else {
+          resolved = true;
+          resolve(response);
+        }
+      });
     } else {
-      reject(new Error('Not connected'));
+      // Socket is not connected or in background -> immediately send via reliable HTTP fallback!
+      fallbackHttpSend('Socket offline');
     }
   });
 }

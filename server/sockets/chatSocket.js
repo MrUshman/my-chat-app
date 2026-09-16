@@ -286,23 +286,24 @@ function initChatSocket(io) {
         if (!Array.isArray(messageIds) || messageIds.length === 0) return;
 
         const now = new Date();
+        const validIds = messageIds.filter(Boolean).map(id => id.toString());
 
-        // Update readAt for messages sent TO this user
+        // Update readAt & deliveredAt for messages sent TO this user
         await Message.updateMany(
           {
-            _id: { $in: messageIds },
+            _id: { $in: validIds },
             receiverId: user._id,
           },
-          { $set: { readAt: now } }
+          { $set: { readAt: now, deliveredAt: now } }
         );
 
         // Find the sender (the other user in this 2-person chat)
         const otherUser = await User.findOne({ _id: { $ne: user._id } });
         if (otherUser) {
           const otherUserId = otherUser._id.toString();
-          // Emit directly to sender's room so their tick turns green in real time
+          // Emit directly to sender's room so their tick turns emerald green in real time
           io.to(otherUserId).emit('messages_read', {
-            messageIds,
+            messageIds: validIds,
             readAt: now,
           });
         }

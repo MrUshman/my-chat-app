@@ -32,6 +32,8 @@ let typingTimeout = null;
 let isTyping = false;
 let isLoadingMessages = false;
 let unreadMessageIds = [];            // Accumulate before sending read receipt
+const clientToRealIdMap = new Map();
+const pendingStatusUpdates = new Map();
 
 let activePartnerId = null;
 let lastMessageSnippet = '';
@@ -50,9 +52,9 @@ window.getAuthHeaders = getAuthHeaders;
 // ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
 
 // Invalidate stale local cache from previous versions
-if (localStorage.getItem('chat_cache_version') !== 'v9.8') {
+if (localStorage.getItem('chat_cache_version') !== 'v9.9') {
   localStorage.removeItem('cached_messages');
-  localStorage.setItem('chat_cache_version', 'v9.8');
+  localStorage.setItem('chat_cache_version', 'v9.9');
 }
 
 function applyCachedState() {
@@ -100,6 +102,9 @@ function applyCachedState() {
         chatMessages.appendChild(fragment);
         oldestMessageId = validMessages[0]._id;
         scrollToBottom(false);
+        if (!document.hidden && unreadMessageIds.length > 0) {
+          sendReadReceipts();
+        }
       }
     }
   } catch (e) {
@@ -217,6 +222,9 @@ async function init() {
         } else if (messages.length > 0) {
           emptyChat.style.display = 'none';
           clearAndRenderInitialMessages(messages);
+          if (!document.hidden && unreadMessageIds.length > 0) {
+            sendReadReceipts();
+          }
         }
       }
     })
@@ -831,18 +839,30 @@ async function sendMessage() {
     const response = await window.ChatSocket.sendTextMessage(text, clientMessageId, replyToId);
 
     if (response?.messageId) {
+      const realId = response.messageId.toString();
+      clientToRealIdMap.set(clientMessageId, realId);
+      clientToRealIdMap.set(realId, clientMessageId);
+
       // Replace optimistic message ID with real one
       const wrapper = chatMessages.querySelector(`[data-message-id="${clientMessageId}"]`);
       if (wrapper) {
-        wrapper.dataset.messageId = response.messageId;
+        wrapper.dataset.messageId = realId;
         const statusEl = wrapper.querySelector('.message-status');
-        if (statusEl) statusEl.id = `status-${response.messageId}`;
+        if (statusEl) statusEl.id = `status-${realId}`;
         renderedMessageIds.delete(clientMessageId);
-        renderedMessageIds.add(response.messageId);
+        renderedMessageIds.add(realId);
+      }
+
+      // If pending status arrived while optimistic, apply immediately
+      if (pendingStatusUpdates.has(realId)) {
+        const pending = pendingStatusUpdates.get(realId);
+        pendingStatusUpdates.delete(realId);
+        updateMessageStatus(realId, pending.status, pending.time);
       }
     }
   } catch (err) {
-    UI.showToast('Message failed to send. ' + err.message, 'error');
+    console.error('sendMessage error:', err);
+    UI.showToast('Message sending error: ' + (err.message || 'Please retry'), 'error');
     // Remove optimistic message
     const wrapper = chatMessages.querySelector(`[data-message-id="${clientMessageId}"]`);
     if (wrapper) wrapper.remove();
@@ -985,26 +1005,35 @@ function setupNotificationPermission() {
 // ─── Receive Message ──────────────────────────────────────────────
 
 function onReceiveMessage(msg) {
-  // Dedup: if we already rendered this (optimistic), update its ID and skip
-  if (renderedMessageIds.has(msg._id)) return;
+  if (!msg || !msg._id) return;
+  const realId = msg._id.toString();
+
+  // Dedup: if we already rendered this (optimistic or past), update its status and skip duplicate render
+  if (renderedMessageIds.has(realId)) {
+    if (msg.readAt) updateMessageStatus(realId, 'read', msg.readAt);
+    else if (msg.deliveredAt) updateMessageStatus(realId, 'delivered', msg.deliveredAt);
+    return;
+  }
 
   // Check if it was an optimistic message from us
   if (msg.clientMessageId) {
     const optimisticEl = chatMessages.querySelector(`[data-message-id="${msg.clientMessageId}"]`);
     if (optimisticEl) {
-      optimisticEl.dataset.messageId = msg._id;
+      clientToRealIdMap.set(msg.clientMessageId, realId);
+      clientToRealIdMap.set(realId, msg.clientMessageId);
+      optimisticEl.dataset.messageId = realId;
       const statusEl = optimisticEl.querySelector('.message-status');
-      if (statusEl) statusEl.id = `status-${msg._id}`;
+      if (statusEl) statusEl.id = `status-${realId}`;
       renderedMessageIds.delete(msg.clientMessageId);
-      renderedMessageIds.add(msg._id);
-      if (msg.deliveredAt) {
-        updateMessageStatus(msg._id, msg.readAt ? 'read' : 'delivered', msg.deliveredAt);
-      }
+      renderedMessageIds.add(realId);
+
+      const nextStatus = msg.readAt ? 'read' : msg.deliveredAt ? 'delivered' : 'sent';
+      updateMessageStatus(realId, nextStatus, msg.readAt || msg.deliveredAt);
       return;
     }
   }
 
-  const isMe = msg.senderId._id === currentUser._id || msg.senderId === currentUser._id;
+  const isMe = (msg.senderId?._id || msg.senderId)?.toString() === currentUser?._id?.toString();
 
   // Discover partner if needed
   if (!isMe && !partner) {
@@ -1016,7 +1045,7 @@ function onReceiveMessage(msg) {
 
   // If receiver, mark as read (we're viewing the chat)
   if (!isMe) {
-    unreadMessageIds.push(msg._id);
+    unreadMessageIds.push(realId);
     sendReadReceipts();
 
     // Browser / Mobile Notification (when tab is not focused or phone in background)
@@ -1093,15 +1122,31 @@ const DOUBLE_TICK_SVG = `<svg class="status-ticks-svg" viewBox="0 0 24 24" fill=
 // ─── Update Message Status ────────────────────────────────────────
 
 function updateMessageStatus(messageId, status, time) {
-  let statusEl = document.getElementById(`status-${messageId}`);
+  if (!messageId) return;
+  const idStr = messageId.toString();
+
+  // Find status element by real ID or client temporary ID
+  let statusEl = document.getElementById(`status-${idStr}`);
+  let wrapper = null;
+
   if (!statusEl) {
-    const wrapper = chatMessages.querySelector(`[data-message-id="${messageId}"]`);
-    if (wrapper) {
+    wrapper = chatMessages.querySelector(`[data-message-id="${idStr}"]`);
+    if (!wrapper && clientToRealIdMap.has(idStr)) {
+      const mappedId = clientToRealIdMap.get(idStr);
+      wrapper = chatMessages.querySelector(`[data-message-id="${mappedId}"]`);
+      statusEl = document.getElementById(`status-${mappedId}`);
+    }
+    if (wrapper && !statusEl) {
       statusEl = wrapper.querySelector('.message-status');
-      if (statusEl) statusEl.id = `status-${messageId}`;
+      if (statusEl) statusEl.id = `status-${idStr}`;
     }
   }
-  if (!statusEl) return;
+
+  // If DOM element is not mounted yet, store for instant application when mounted
+  if (!statusEl) {
+    pendingStatusUpdates.set(idStr, { status, time });
+    return;
+  }
 
   if (status === 'read') {
     statusEl.className = 'message-status read';

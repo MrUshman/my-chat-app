@@ -2,7 +2,9 @@
 
 const express = require('express');
 const Message = require('../models/Message');
+const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
+const { isUserOnline } = require('../sockets/chatSocket');
 
 const router = express.Router();
 
@@ -51,6 +53,37 @@ router.get('/', requireAuth, async (req, res) => {
       })
       .lean();
 
+    // Mark undelivered messages to this user as delivered
+    try {
+      const undeliveredIds = messages
+        .filter(m => m.receiverId?._id?.toString() === req.user._id.toString() && !m.deliveredAt)
+        .map(m => m._id);
+
+      if (undeliveredIds.length > 0) {
+        const now = new Date();
+        await Message.updateMany(
+          { _id: { $in: undeliveredIds } },
+          { deliveredAt: now }
+        );
+
+        // Update local array so response has deliveredAt set
+        messages.forEach(m => {
+          if (undeliveredIds.includes(m._id)) m.deliveredAt = now;
+        });
+
+        const io = req.app.get('io');
+        const otherUser = await User.findOne({ _id: { $ne: req.user._id } }).select('_id');
+        if (io && otherUser) {
+          io.to(otherUser._id.toString()).emit('messages_delivered', {
+            messageIds: undeliveredIds.map(id => id.toString()),
+            deliveredAt: now,
+          });
+        }
+      }
+    } catch (deliveryErr) {
+      console.error('Auto delivery error in GET /api/messages:', deliveryErr.message);
+    }
+
     // Return in chronological order (oldest first for rendering)
     messages.reverse();
 
@@ -61,6 +94,77 @@ router.get('/', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Get messages error:', err.message);
     res.status(500).json({ error: 'Failed to load messages.' });
+  }
+});
+
+// POST /api/messages — Send text message via HTTP REST (Fallback & High-Reliability Channel)
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    const { text, clientMessageId, replyTo } = req.body;
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Message text is required.' });
+    }
+
+    if (text.length > 5000) {
+      return res.status(400).json({ error: 'Message is too long.' });
+    }
+
+    const otherUser = await User.findOne({ _id: { $ne: req.user._id } });
+    if (!otherUser) {
+      return res.status(404).json({ error: 'Receiver not found.' });
+    }
+
+    const io = req.app.get('io');
+    const otherUserId = otherUser._id.toString();
+    const userId = req.user._id.toString();
+    const receiverOnline = isUserOnline(otherUserId, io);
+    const now = new Date();
+
+    const message = await Message.create({
+      senderId: req.user._id,
+      receiverId: otherUser._id,
+      type: 'text',
+      text: text.trim(),
+      deliveredAt: receiverOnline ? now : null,
+      replyTo: replyTo || null,
+    });
+
+    await message.populate('senderId', 'username displayName');
+    await message.populate('receiverId', 'username displayName');
+    if (message.replyTo) {
+      await message.populate({
+        path: 'replyTo',
+        select: 'text type mediaUrl senderId deletedForEveryone',
+        populate: { path: 'senderId', select: 'displayName username' },
+      });
+    }
+
+    const msgObj = message.toObject();
+    msgObj.clientMessageId = clientMessageId;
+
+    if (io) {
+      // Broadcast to sender room (all open tabs of current user)
+      io.to(userId).emit('receive_message', msgObj);
+
+      // Broadcast to receiver room if online
+      if (receiverOnline) {
+        io.to(otherUserId).emit('receive_message', msgObj);
+        io.to(userId).emit('message_delivered', {
+          messageId: message._id.toString(),
+          deliveredAt: now,
+        });
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      messageId: message._id.toString(),
+      message: msgObj,
+    });
+  } catch (err) {
+    console.error('HTTP POST /api/messages error:', err.message);
+    res.status(500).json({ error: 'Failed to send message.' });
   }
 });
 
