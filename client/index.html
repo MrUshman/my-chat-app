@@ -1045,6 +1045,47 @@
     </div>
   </div>
 
+  <!-- Microphone Permission Guide Modal -->
+  <div class="modal-overlay" id="micPermissionModal" role="dialog" aria-modal="true" aria-label="Microphone Permission" style="display:none;">
+    <div class="delete-modal-card mic-permission-card">
+      <div class="mic-perm-icon-wrapper">
+        <div class="mic-perm-icon-pulse"></div>
+        <svg class="mic-perm-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          <line x1="12" y1="19" x2="12" y2="23"></line>
+          <line x1="8" y1="23" x2="16" y2="23"></line>
+        </svg>
+      </div>
+      <h3 class="delete-modal-title">Microphone Access Needed</h3>
+      <p class="delete-modal-subtitle">Voice message record karne ke liye microphone allow kijiye.</p>
+      
+      <div class="mic-perm-guide">
+        <div class="mic-perm-step">
+          <span class="step-num">1</span>
+          <span>Browser ke top me <strong>🔒 Lock / Tune icon</strong> par tap karein.</span>
+        </div>
+        <div class="mic-perm-step">
+          <span class="step-num">2</span>
+          <span><strong>Permissions</strong> me jakar <strong>Microphone</strong> ko <strong>Allow</strong> karein.</span>
+        </div>
+        <div class="mic-perm-step">
+          <span class="step-num">3</span>
+          <span>Niche <strong>Allow / Try Again</strong> par tap karein.</span>
+        </div>
+      </div>
+
+      <div class="delete-modal-options">
+        <button type="button" class="btn-profile-save" id="micPermTryAgainBtn" style="width:100%; justify-content:center;">
+          <span>🎙️ Allow / Try Again</span>
+        </button>
+        <button type="button" class="btn-delete-cancel" id="micPermCloseBtn">
+          <span>Cancel</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Desktop Right-Click Context Menu -->
   <div id="msgContextMenu" class="msg-context-menu" style="display:none;" role="menu">
     <button type="button" class="context-item" id="ctxReplyBtn">

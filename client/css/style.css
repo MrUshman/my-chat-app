@@ -3126,3 +3126,82 @@ body.motion-minimal .chat-messages {
     transform: translateY(0) !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MICROPHONE PERMISSION MODAL & RE-PROMPT
+   ═══════════════════════════════════════════════════════════════════ */
+.mic-permission-card {
+  max-width: 380px !important;
+  text-align: center !important;
+  padding: 24px 20px !important;
+  border-radius: 24px !important;
+}
+
+.mic-perm-icon-wrapper {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(168, 85, 247, 0.2));
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px auto;
+}
+
+.mic-perm-icon-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(239, 68, 68, 0.3);
+  animation: pulseRing 2s infinite ease-out;
+}
+
+@keyframes pulseRing {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 0.3; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.mic-perm-svg {
+  width: 30px;
+  height: 30px;
+  color: #ef4444;
+}
+
+.mic-perm-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0 20px 0;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 14px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mic-perm-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #cbd5e1;
+}
+
+.mic-perm-step .step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 50%;
+  background: var(--accent-purple, #8b5cf6);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 1px;
+}

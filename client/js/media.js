@@ -204,8 +204,36 @@ async function uploadAndSendMedia() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// VOICE RECORDING
+// VOICE RECORDING & PERMISSION RE-PROMPT
 // ═══════════════════════════════════════════════════════════════════
+
+const micPermissionModal = document.getElementById('micPermissionModal');
+const micPermTryAgainBtn = document.getElementById('micPermTryAgainBtn');
+const micPermCloseBtn = document.getElementById('micPermCloseBtn');
+
+function openMicPermissionModal() {
+  if (micPermissionModal) {
+    micPermissionModal.style.display = 'flex';
+  }
+}
+
+function closeMicPermissionModal() {
+  if (micPermissionModal) {
+    micPermissionModal.style.display = 'none';
+  }
+}
+
+if (micPermCloseBtn) {
+  micPermCloseBtn.addEventListener('click', closeMicPermissionModal);
+}
+
+if (micPermTryAgainBtn) {
+  micPermTryAgainBtn.addEventListener('click', async () => {
+    closeMicPermissionModal();
+    // Re-prompt microphone permission directly on user gesture
+    await startRecording();
+  });
+}
 
 micBtn.addEventListener('click', startRecording);
 
@@ -213,7 +241,7 @@ async function startRecording() {
   if (isUploading) return;
 
   // Check browser support
-  if (!navigator.mediaDevices || !window.MediaRecorder) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
     UI.showToast('Voice recording is not supported in this browser.', 'error');
     return;
   }
@@ -263,12 +291,12 @@ async function startRecording() {
     }, 1000);
 
   } catch (err) {
-    if (err.name === 'NotAllowedError') {
-      UI.showToast('Microphone permission denied. Please allow microphone access.', 'error');
+    console.warn('Microphone access issue:', err);
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.name === 'SecurityError') {
+      openMicPermissionModal();
     } else {
-      UI.showToast('Could not start recording.', 'error');
+      UI.showToast('Could not start recording. Tap to try again.', 'error');
     }
-    console.error('Recording error:', err);
   }
 }
 
