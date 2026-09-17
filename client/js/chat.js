@@ -52,9 +52,9 @@ window.getAuthHeaders = getAuthHeaders;
 // ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
 
 // Invalidate stale local cache from previous versions
-if (localStorage.getItem('chat_cache_version') !== 'v10.0') {
+if (localStorage.getItem('chat_cache_version') !== 'v10.1') {
   localStorage.removeItem('cached_messages');
-  localStorage.setItem('chat_cache_version', 'v10.0');
+  localStorage.setItem('chat_cache_version', 'v10.1');
 }
 
 function applyCachedState() {
@@ -1043,8 +1043,18 @@ function onReceiveMessage(msg) {
   renderMessage(msg, 'append');
   scrollToBottom();
 
-  // If receiver, mark as read (we're viewing the chat)
+  // If receiver, mark as read and ensure partner is online
   if (!isMe) {
+    isPartnerOnline = true;
+    if (statusDot) {
+      statusDot.classList.add('online');
+      statusDot.classList.remove('typing');
+    }
+    if (statusText && !isPartnerTyping) {
+      statusText.textContent = 'Online';
+      statusText.classList.add('online');
+      statusText.classList.remove('typing');
+    }
     unreadMessageIds.push(realId);
     sendReadReceipts();
 
@@ -1206,12 +1216,15 @@ function setPartnerOnline(online, lastSeen = null) {
   }
 }
 
-// Keep the "Last seen Xm ago" updated dynamically every 30s
+// Keep the status synced and "Last seen Xm ago" updated dynamically every 15s
 setInterval(() => {
+  if (window.ChatSocket && window.ChatSocket.requestPartnerStatus) {
+    window.ChatSocket.requestPartnerStatus();
+  }
   if (!isPartnerTyping && !isPartnerOnline && partnerLastSeenDate && statusText) {
     statusText.textContent = UI.formatLastSeen(partnerLastSeenDate);
   }
-}, 30000);
+}, 15000);
 
 // ─── Typing Indicator (WhatsApp Style Header & Bubble) ─────────────
 
@@ -1220,6 +1233,7 @@ function showTyping(displayName, fromUserId = null) {
   if (fromUserId && currentUid && fromUserId.toString() === currentUid) {
     return; // Never show typing for ourselves!
   }
+  isPartnerOnline = true; // Actively typing means partner is 100% online!
   isPartnerTyping = true;
   if (statusText) {
     statusText.textContent = 'typing...';

@@ -107,10 +107,6 @@ function initSocket() {
           try { socket.emit('get_partner_status'); } catch(e) {}
         }
       }
-    } else if (document.visibilityState === 'hidden') {
-      if (socket && socket.connected) {
-        try { socket.emit('client_offline'); } catch(e) {}
-      }
     }
   });
 

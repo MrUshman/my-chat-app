@@ -34,25 +34,24 @@ function unregisterUser(userId, socketId) {
 function isUserOnline(userId, ioInstance) {
   if (!userId) return false;
   const uid = userId.toString();
-  if (!onlineUsers.has(uid)) return false;
 
-  const socketSet = onlineUsers.get(uid);
-
-  // Validate that registered sockets are ACTUALLY live in Socket.IO
+  // 1. Direct validation against live Socket.IO connection map
   if (ioInstance && ioInstance.sockets && ioInstance.sockets.sockets) {
-    for (const sid of Array.from(socketSet)) {
-      const liveSocket = ioInstance.sockets.sockets.get(sid);
-      if (!liveSocket || !liveSocket.connected) {
-        socketSet.delete(sid);
+    for (const [, liveSocket] of ioInstance.sockets.sockets) {
+      if (liveSocket.connected && liveSocket.user?._id?.toString() === uid) {
+        registerUser(uid, liveSocket.id);
+        return true;
       }
     }
   }
 
-  if (socketSet.size === 0) {
-    onlineUsers.delete(uid);
-    return false;
+  // 2. Map-based fallback check
+  if (onlineUsers.has(uid)) {
+    const socketSet = onlineUsers.get(uid);
+    if (socketSet && socketSet.size > 0) return true;
   }
-  return true;
+
+  return false;
 }
 
 /**
@@ -255,6 +254,7 @@ function initChatSocket(io) {
     // ─── Typing Events ────────────────────────────────────────────────────────
     socket.on('typing_start', async () => {
       try {
+        registerUser(userId, socket.id);
         const otherUser = await User.findOne({ _id: { $ne: user._id } }).select('_id');
         if (otherUser) {
           io.to(otherUser._id.toString()).emit('typing_start', {
@@ -269,6 +269,7 @@ function initChatSocket(io) {
 
     socket.on('typing_stop', async () => {
       try {
+        registerUser(userId, socket.id);
         const otherUser = await User.findOne({ _id: { $ne: user._id } }).select('_id');
         if (otherUser) {
           io.to(otherUser._id.toString()).emit('typing_stop', { userId });
