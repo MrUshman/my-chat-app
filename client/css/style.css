@@ -1049,7 +1049,7 @@ body.motion-bubbles::before {
 /* Sent Photo & Video Bubble Styling (WhatsApp / Telegram Standard Dimensions) */
 .image-message, .video-message {
   position: relative;
-  max-width: min(270px, 75vw) !important;
+  max-width: min(320px, 82vw) !important;
   width: fit-content;
   border-radius: 16px !important;
   overflow: hidden !important;
@@ -1065,11 +1065,13 @@ body.motion-bubbles::before {
 
 .image-message img {
   width: 100% !important;
-  max-width: 260px !important;
-  max-height: 260px !important;
+  max-width: 320px !important;
+  max-height: 380px !important;
   object-fit: cover !important;
   border-radius: 12px !important;
   display: block !important;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
 }
 
 .chat-inline-video {

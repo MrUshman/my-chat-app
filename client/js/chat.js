@@ -52,9 +52,9 @@ window.getAuthHeaders = getAuthHeaders;
 // ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
 
 // Invalidate stale local cache from previous versions
-if (localStorage.getItem('chat_cache_version') !== 'v10.3') {
+if (localStorage.getItem('chat_cache_version') !== 'v10.4') {
   localStorage.removeItem('cached_messages');
-  localStorage.setItem('chat_cache_version', 'v10.3');
+  localStorage.setItem('chat_cache_version', 'v10.4');
 }
 
 function applyCachedState() {

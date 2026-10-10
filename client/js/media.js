@@ -91,13 +91,23 @@ async function startCamera() {
     const constraints = {
       video: {
         facingMode: currentFacingMode,
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
+        width: { ideal: 3840, min: 1280 },
+        height: { ideal: 2160, min: 720 },
+        frameRate: { ideal: 30 },
       },
       audio: false,
     };
 
-    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (constraintErr) {
+      // Fallback if min resolution is too high for front camera
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+    }
+
     if (cameraVideo) {
       cameraVideo.srcObject = cameraStream;
       if (currentFacingMode === 'user') {
@@ -113,7 +123,10 @@ async function startCamera() {
     if (currentFacingMode === 'environment') {
       try {
         currentFacingMode = 'user';
-        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false,
+        });
         if (cameraVideo) {
           cameraVideo.srcObject = cameraStream;
           cameraVideo.classList.add('mirror');
@@ -176,35 +189,82 @@ async function flipCamera() {
   await startCamera();
 }
 
-function takePhoto() {
+async function takePhoto() {
   if (!cameraVideo || !cameraStream) return;
 
-  const w = cameraVideo.videoWidth || 1280;
-  const h = cameraVideo.videoHeight || 720;
+  try {
+    const videoTrack = cameraStream.getVideoTracks()[0];
+    let capturedBlob = null;
 
-  if (!cameraCanvas) return;
-  cameraCanvas.width = w;
-  cameraCanvas.height = h;
+    // 1. Try Native Hardware Still Photo via ImageCapture (Maximum Hardware HD / Megapixels!)
+    if (window.ImageCapture && videoTrack) {
+      try {
+        const imageCapture = new window.ImageCapture(videoTrack);
+        const capabilities = await imageCapture.getPhotoCapabilities?.().catch(() => null);
+        const photoSettings = {};
+        if (capabilities) {
+          if (capabilities.imageWidth?.max) photoSettings.imageWidth = capabilities.imageWidth.max;
+          if (capabilities.imageHeight?.max) photoSettings.imageHeight = capabilities.imageHeight.max;
+        }
+        const rawBlob = await imageCapture.takePhoto(photoSettings);
 
-  const ctx = cameraCanvas.getContext('2d');
-  if (!ctx) return;
+        // If selfie front camera, mirror image naturally preserving high resolution
+        if (currentFacingMode === 'user' && cameraCanvas) {
+          const imgBitmap = await createImageBitmap(rawBlob);
+          cameraCanvas.width = imgBitmap.width;
+          cameraCanvas.height = imgBitmap.height;
+          const ctx = cameraCanvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.translate(imgBitmap.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(imgBitmap, 0, 0);
+            capturedBlob = await new Promise(resolve => cameraCanvas.toBlob(resolve, 'image/jpeg', 0.98));
+          } else {
+            capturedBlob = rawBlob;
+          }
+        } else {
+          capturedBlob = rawBlob;
+        }
+      } catch (icErr) {
+        console.warn('ImageCapture still capture failed, falling back to high-res canvas:', icErr);
+      }
+    }
 
-  // Mirror selfie image naturally like a front camera
-  if (currentFacingMode === 'user') {
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
-  }
+    // 2. High-Res Canvas Fallback (if ImageCapture is unavailable or Safari)
+    if (!capturedBlob) {
+      if (!cameraCanvas) return;
+      const w = cameraVideo.videoWidth || 1920;
+      const h = cameraVideo.videoHeight || 1080;
 
-  ctx.drawImage(cameraVideo, 0, 0, w, h);
+      cameraCanvas.width = w;
+      cameraCanvas.height = h;
 
-  cameraCanvas.toBlob((blob) => {
-    if (!blob) {
+      const ctx = cameraCanvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // Mirror selfie image naturally like a front camera
+      if (currentFacingMode === 'user') {
+        ctx.translate(w, 0);
+        ctx.scale(-1, 1);
+      }
+
+      ctx.drawImage(cameraVideo, 0, 0, w, h);
+
+      capturedBlob = await new Promise(resolve => cameraCanvas.toBlob(resolve, 'image/jpeg', 0.98));
+    }
+
+    if (!capturedBlob) {
       UI.showToast('Failed to capture photo.', 'error');
       return;
     }
 
     // Create File in RAM only — never written to disk or device gallery!
-    const capturedFile = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    const capturedFile = new File([capturedBlob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
 
     // Instantly close live camera stream
     closeCamera();
@@ -226,15 +286,18 @@ function takePhoto() {
     }
 
     if (photoPreviewImg) {
-      photoPreviewImg.src = URL.createObjectURL(blob);
+      photoPreviewImg.src = URL.createObjectURL(capturedBlob);
       photoPreviewImg.style.display = 'block';
     }
 
-    photoSend.textContent = 'Send Photo ❤️';
+    photoSend.textContent = 'Send Photo (HD) ❤️';
     photoPreviewContainer.classList.add('active');
     const inputRowEl = document.querySelector('.input-row');
     if (inputRowEl) inputRowEl.style.display = 'none';
-  }, 'image/jpeg', 0.92);
+  } catch (err) {
+    console.error('takePhoto error:', err);
+    UI.showToast('Could not capture photo. Please try again.', 'error');
+  }
 }
 
 // ─── Attach Events for Media Picker & Camera ────────────────────────
