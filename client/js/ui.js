@@ -45,9 +45,41 @@ const imageModalDownload = document.getElementById('imageModalDownload');
 let currentImageUrl = null;
 let currentImageFilename = null;
 
+// ─── Image Zoom & Pan Gestures (Pinch to Zoom, Double-Tap, Pan) ────
+let imgScale = 1;
+let imgPosX = 0;
+let imgPosY = 0;
+let initialDist = 0;
+let initialScale = 1;
+let isPanning = false;
+let startPanX = 0;
+let startPanY = 0;
+let lastTapTime = 0;
+
+function updateImageTransform(withTransition = false) {
+  if (!imageModalImg) return;
+  if (withTransition) {
+    imageModalImg.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)';
+  } else {
+    imageModalImg.style.transition = 'none';
+  }
+  imageModalImg.style.transform = `translate3d(${imgPosX}px, ${imgPosY}px, 0px) scale(${imgScale})`;
+}
+
+function resetImageZoom() {
+  imgScale = 1;
+  imgPosX = 0;
+  imgPosY = 0;
+  initialDist = 0;
+  initialScale = 1;
+  isPanning = false;
+  updateImageTransform(false);
+}
+
 function openImageModal(url, filename) {
   currentImageUrl = url;
   currentImageFilename = filename || 'chat-photo.jpg';
+  resetImageZoom();
   imageModalImg.src = url;
   imageModal.style.display = 'flex';
   imageModal.classList.add('open');
@@ -59,6 +91,7 @@ function closeImageModal() {
   imageModal.style.display = 'none';
   imageModalImg.src = '';
   currentImageUrl = null;
+  resetImageZoom();
 }
 
 window.openImageModal = openImageModal;
@@ -76,12 +109,108 @@ imageModalDownload.addEventListener('click', () => {
   a.remove();
 });
 
-// Close modal on overlay click
+// Close modal on overlay click (only when not zoomed in)
 imageModal.addEventListener('click', (e) => {
+  if (imgScale > 1.05) return;
   if (e.target === imageModal || e.target.classList.contains('image-modal-body')) {
     closeImageModal();
   }
 });
+
+// ─── Touch Events on imageModalImg (2-Finger Pinch + Pan) ──────────
+if (imageModalImg) {
+  imageModalImg.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      // Two-finger pinch start
+      isPanning = false;
+      const x1 = e.touches[0].clientX;
+      const y1 = e.touches[0].clientY;
+      const x2 = e.touches[1].clientX;
+      const y2 = e.touches[1].clientY;
+      initialDist = Math.hypot(x2 - x1, y2 - y1);
+      initialScale = imgScale;
+    } else if (e.touches.length === 1) {
+      // Single finger: check double-tap or pan
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        // Double-tap toggle zoom
+        e.preventDefault();
+        if (imgScale > 1.2) {
+          imgScale = 1;
+          imgPosX = 0;
+          imgPosY = 0;
+        } else {
+          imgScale = 2.5;
+        }
+        updateImageTransform(true);
+        lastTapTime = 0;
+        return;
+      }
+      lastTapTime = now;
+
+      if (imgScale > 1.05) {
+        isPanning = true;
+        startPanX = e.touches[0].clientX - imgPosX;
+        startPanY = e.touches[0].clientY - imgPosY;
+      }
+    }
+  }, { passive: false });
+
+  imageModalImg.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && initialDist > 0) {
+      // Pinching with two fingers
+      e.preventDefault();
+      const x1 = e.touches[0].clientX;
+      const y1 = e.touches[0].clientY;
+      const x2 = e.touches[1].clientX;
+      const y2 = e.touches[1].clientY;
+      const currentDist = Math.hypot(x2 - x1, y2 - y1);
+      const factor = currentDist / initialDist;
+      imgScale = Math.min(Math.max(initialScale * factor, 0.8), 4.5);
+      updateImageTransform(false);
+    } else if (e.touches.length === 1 && isPanning && imgScale > 1.05) {
+      // Panning while zoomed
+      e.preventDefault();
+      imgPosX = e.touches[0].clientX - startPanX;
+      imgPosY = e.touches[0].clientY - startPanY;
+      updateImageTransform(false);
+    }
+  }, { passive: false });
+
+  imageModalImg.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) {
+      isPanning = false;
+      if (imgScale < 1.05) {
+        // Snap back to 1x
+        imgScale = 1;
+        imgPosX = 0;
+        imgPosY = 0;
+        updateImageTransform(true);
+      } else if (imgScale > 4.5) {
+        imgScale = 4.5;
+        updateImageTransform(true);
+      }
+    } else if (e.touches.length === 1 && imgScale > 1.05) {
+      // Continue panning with remaining finger
+      isPanning = true;
+      startPanX = e.touches[0].clientX - imgPosX;
+      startPanY = e.touches[0].clientY - imgPosY;
+    }
+  });
+
+  // Desktop mouse wheel zoom support
+  imageModalImg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.2 : 0.8;
+    imgScale = Math.min(Math.max(imgScale * zoomFactor, 1), 4.5);
+    if (imgScale <= 1.05) {
+      imgScale = 1;
+      imgPosX = 0;
+      imgPosY = 0;
+    }
+    updateImageTransform(true);
+  }, { passive: false });
+}
 
 // ─── Video Modal ──────────────────────────────────────────────────
 

@@ -52,9 +52,9 @@ window.getAuthHeaders = getAuthHeaders;
 // ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
 
 // Invalidate stale local cache from previous versions
-if (localStorage.getItem('chat_cache_version') !== 'v10.1') {
+if (localStorage.getItem('chat_cache_version') !== 'v10.3') {
   localStorage.removeItem('cached_messages');
-  localStorage.setItem('chat_cache_version', 'v10.1');
+  localStorage.setItem('chat_cache_version', 'v10.3');
 }
 
 function applyCachedState() {
@@ -2737,6 +2737,27 @@ function setupInChatSearch() {
 let lastBackPressTimestamp = 0;
 
 function handleBackButton() {
+  // 0a. In-App Camera Modal
+  const cameraModal = document.getElementById('cameraModal');
+  if (cameraModal && cameraModal.style.display === 'flex') {
+    if (window.closeCamera) window.closeCamera();
+    return true;
+  }
+
+  // 0b. Media Picker Drawer Modal
+  const mediaPickerModal = document.getElementById('mediaPickerModal');
+  if (mediaPickerModal && mediaPickerModal.style.display === 'flex') {
+    if (window.closeMediaPicker) window.closeMediaPicker();
+    return true;
+  }
+
+  // 0c. Photo/Video Preview Bar Container
+  const photoPreviewContainer = document.getElementById('photoPreviewContainer');
+  if (photoPreviewContainer && photoPreviewContainer.classList.contains('active')) {
+    if (window.cancelPhotoSelection) window.cancelPhotoSelection();
+    return true;
+  }
+
   // 1. Multiple Message Selection Mode
   if (isSelectionMode) {
     exitSelectionMode();

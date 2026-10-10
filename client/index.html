@@ -8,9 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=10.1" />
-  <link rel="preload" href="/css/style.css?v=10.1" as="style" />
-  <link rel="preload" href="/js/chat.js?v=10.1" as="script" />
+  <link rel="stylesheet" href="/css/style.css?v=10.3" />
+  <link rel="preload" href="/css/style.css?v=10.3" as="style" />
+  <link rel="preload" href="/js/chat.js?v=10.3" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
     /* Dedicated Self-Contained Mobile App Layout Guarantee */
@@ -1089,6 +1089,93 @@
     </div>
   </div>
 
+  <!-- Media Attachment Choice Sheet (Camera vs Gallery) -->
+  <div class="modal-overlay" id="mediaPickerModal" role="dialog" aria-modal="true" aria-label="Attach Media" style="display:none;">
+    <div class="delete-modal-card media-picker-card">
+      <div class="media-picker-header">
+        <h3 class="delete-modal-title">Share Photo / Video</h3>
+        <p class="delete-modal-subtitle">Choose an option to send</p>
+      </div>
+
+      <div class="media-picker-options">
+        <button type="button" class="media-picker-btn camera-btn" id="openCameraBtn">
+          <div class="media-picker-icon camera-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+          </div>
+          <div class="media-picker-info">
+            <span class="media-picker-title">📸 Open Camera</span>
+            <span class="media-picker-badge">🔒 Private &bull; Not saved to phone gallery</span>
+          </div>
+        </button>
+
+        <button type="button" class="media-picker-btn gallery-btn" id="openGalleryBtn">
+          <div class="media-picker-icon gallery-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+          </div>
+          <div class="media-picker-info">
+            <span class="media-picker-title">🖼️ Choose from Gallery</span>
+            <span class="media-picker-desc">Upload photos or videos from phone storage</span>
+          </div>
+        </button>
+      </div>
+
+      <button type="button" class="btn-delete-cancel" id="mediaPickerCloseBtn" style="margin-top: 16px;">
+        <span>Cancel</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- In-App Private Camera Viewfinder Modal -->
+  <div class="camera-modal-overlay" id="cameraModal" role="dialog" aria-modal="true" aria-label="Camera" style="display:none;">
+    <div class="camera-modal-container">
+      <!-- Camera Top Bar -->
+      <div class="camera-topbar">
+        <button type="button" class="camera-top-btn" id="cameraCloseBtn" aria-label="Close Camera" title="Close Camera">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+        <span class="camera-privacy-badge">🔒 Private &bull; In-App Camera</span>
+        <div class="camera-top-spacer" style="width: 44px;"></div>
+      </div>
+
+      <!-- Live Video Stream -->
+      <div class="camera-viewfinder">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+        <canvas id="cameraCanvas" style="display:none;"></canvas>
+      </div>
+
+      <!-- Camera Bottom Controls Bar -->
+      <div class="camera-bottom-bar">
+        <!-- Left: Quick Gallery Picker -->
+        <button type="button" class="camera-side-action-btn" id="cameraGalleryShortcutBtn" aria-label="Choose from Gallery" title="Choose from Gallery">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+        </button>
+
+        <!-- Center: Main Shutter Button -->
+        <button type="button" class="camera-shutter-btn" id="cameraShutterBtn" aria-label="Take Photo" title="Take Photo">
+          <div class="shutter-inner"></div>
+        </button>
+
+        <!-- Right: Flip Camera (Front / Back) -->
+        <button type="button" class="camera-side-action-btn" id="cameraFlipBtn" aria-label="Flip Camera" title="Flip Camera">
+          <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Desktop Right-Click Context Menu -->
   <div id="msgContextMenu" class="msg-context-menu" style="display:none;" role="menu">
     <button type="button" class="context-item" id="ctxReplyBtn">
@@ -1111,10 +1198,10 @@
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=10.1"></script>
-  <script src="/js/emoji.js?v=10.1"></script>
-  <script src="/js/media.js?v=10.1"></script>
-  <script src="/js/socket.js?v=10.1"></script>
-  <script src="/js/chat.js?v=10.1"></script>
+  <script src="/js/ui.js?v=10.3"></script>
+  <script src="/js/emoji.js?v=10.3"></script>
+  <script src="/js/media.js?v=10.3"></script>
+  <script src="/js/socket.js?v=10.3"></script>
+  <script src="/js/chat.js?v=10.3"></script>
 </body>
 </html>

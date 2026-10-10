@@ -1804,14 +1804,34 @@ body.motion-bubbles::before {
 .image-modal-body {
   flex: 1;
   width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   padding: 10px;
+  touch-action: none;
+  position: relative;
 }
 
-#imageModalImg, #videoModalPlayer, .video-modal-video {
+#imageModalImg {
+  max-width: 95vw !important;
+  max-height: 84vh !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(124, 58, 237, 0.3) !important;
+  background: #000000;
+  outline: none;
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+#videoModalPlayer, .video-modal-video {
   max-width: 94vw !important;
   max-height: 85vh !important;
   width: auto !important;
@@ -1819,14 +1839,8 @@ body.motion-bubbles::before {
   object-fit: contain !important;
   border-radius: 16px !important;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(124, 58, 237, 0.3) !important;
-  animation: zoomIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   background: #000000;
   outline: none;
-}
-
-@keyframes zoomIn {
-  from { opacity: 0; transform: scale(0.85); }
-  to { opacity: 1; transform: scale(1); }
 }
 
 /* Modals Overlay */
@@ -3264,4 +3278,273 @@ body.motion-minimal .chat-messages {
   font-size: 11px;
   font-weight: 700;
   margin-top: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEDIA ATTACHMENT PICKER & IN-APP PRIVATE CAMERA
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Media Picker Action Sheet */
+.media-picker-card {
+  max-width: 380px !important;
+  text-align: center !important;
+  padding: 24px 20px !important;
+  border-radius: 28px !important;
+}
+
+.media-picker-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.media-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.25s ease;
+  width: 100%;
+}
+
+.media-picker-btn:hover, .media-picker-btn:active {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+  border-color: rgba(139, 92, 246, 0.4);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.media-picker-icon {
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.media-picker-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.camera-btn .media-picker-icon {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(168, 85, 247, 0.3));
+  border: 1px solid rgba(236, 72, 153, 0.4);
+  color: #f472b6;
+}
+
+.gallery-btn .media-picker-icon {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(16, 185, 129, 0.3));
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+}
+
+.media-picker-btn:hover .media-picker-icon {
+  transform: scale(1.08);
+}
+
+.media-picker-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.media-picker-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.media-picker-badge {
+  font-size: 11.5px;
+  color: #34d399;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.media-picker-desc {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* In-App Private Camera Viewfinder Modal */
+.camera-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.camera-modal-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #000000;
+}
+
+.camera-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(16px, env(safe-area-inset-top)) 20px 16px 20px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent);
+}
+
+.camera-top-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.camera-top-btn:active {
+  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.camera-privacy-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 6px 14px;
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.camera-viewfinder {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000000;
+  overflow: hidden;
+}
+
+.camera-viewfinder video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.camera-viewfinder video.mirror {
+  transform: scaleX(-1);
+}
+
+.camera-bottom-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 20px 24px max(28px, env(safe-area-inset-bottom)) 24px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+}
+
+.camera-side-action-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.camera-side-action-btn:active {
+  transform: scale(0.88);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.camera-side-action-btn svg {
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.camera-side-action-btn#cameraFlipBtn:active svg {
+  transform: rotate(180deg);
+}
+
+.camera-shutter-btn {
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  border: 4.5px solid #ffffff;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.6), 0 0 10px rgba(255, 255, 255, 0.2);
+}
+
+.camera-shutter-btn:active {
+  transform: scale(0.91);
+}
+
+.shutter-inner {
+  width: 65px;
+  height: 65px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.15s ease, background 0.15s ease;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.camera-shutter-btn:active .shutter-inner {
+  transform: scale(0.88);
+  background: #e2e8f0;
 }

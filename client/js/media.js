@@ -44,10 +44,231 @@ let isUploading = false;
 // PHOTO & VIDEO HANDLING (50 MB MAX)
 // ═══════════════════════════════════════════════════════════════════
 
-photoBtn.addEventListener('click', () => {
+// ─── DOM References for Media Picker & In-App Private Camera ────────
+const mediaPickerModal = document.getElementById('mediaPickerModal');
+const openCameraBtn = document.getElementById('openCameraBtn');
+const openGalleryBtn = document.getElementById('openGalleryBtn');
+const mediaPickerCloseBtn = document.getElementById('mediaPickerCloseBtn');
+
+const cameraModal = document.getElementById('cameraModal');
+const cameraVideo = document.getElementById('cameraVideo');
+const cameraCanvas = document.getElementById('cameraCanvas');
+const cameraCloseBtn = document.getElementById('cameraCloseBtn');
+const cameraFlipBtn = document.getElementById('cameraFlipBtn');
+const cameraShutterBtn = document.getElementById('cameraShutterBtn');
+const cameraGalleryShortcutBtn = document.getElementById('cameraGalleryShortcutBtn');
+
+let cameraStream = null;
+let currentFacingMode = 'environment'; // default to back camera, fallback to front
+
+function openMediaPicker() {
   if (isUploading) return;
-  photoInput.click();
-});
+  if (mediaPickerModal) {
+    mediaPickerModal.style.display = 'flex';
+  }
+}
+
+function closeMediaPicker() {
+  if (mediaPickerModal) {
+    mediaPickerModal.style.display = 'none';
+  }
+}
+
+async function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    closeCamera();
+    if (!window.isSecureContext) {
+      UI.showToast('Camera requires HTTPS on mobile. Use HTTPS or Choose from Gallery.', 'error', 4500);
+    } else {
+      UI.showToast('Camera is not supported on this browser/device.', 'error', 3000);
+    }
+    return;
+  }
+
+  stopCamera();
+
+  try {
+    const constraints = {
+      video: {
+        facingMode: currentFacingMode,
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    };
+
+    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (cameraVideo) {
+      cameraVideo.srcObject = cameraStream;
+      if (currentFacingMode === 'user') {
+        cameraVideo.classList.add('mirror');
+      } else {
+        cameraVideo.classList.remove('mirror');
+      }
+      await cameraVideo.play().catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Camera access issue with facingMode:', currentFacingMode, err);
+    // Fallback if environment camera not found (e.g. desktop webcam)
+    if (currentFacingMode === 'environment') {
+      try {
+        currentFacingMode = 'user';
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        if (cameraVideo) {
+          cameraVideo.srcObject = cameraStream;
+          cameraVideo.classList.add('mirror');
+          await cameraVideo.play().catch(() => {});
+        }
+        return;
+      } catch (fallbackErr) {
+        console.error('Fallback camera error:', fallbackErr);
+      }
+    }
+
+    closeCamera();
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      UI.showToast('Camera permission denied. Please allow camera access in browser.', 'error');
+    } else {
+      UI.showToast('Could not access camera. Please check permissions.', 'error');
+    }
+  }
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => {
+      try { track.stop(); } catch(e) {}
+    });
+    cameraStream = null;
+  }
+  if (cameraVideo) {
+    cameraVideo.srcObject = null;
+  }
+}
+
+async function openCamera() {
+  closeMediaPicker();
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!window.isSecureContext) {
+      UI.showToast('Camera requires HTTPS on mobile. Use HTTPS or Choose from Gallery.', 'error', 4500);
+    } else {
+      UI.showToast('Camera is not supported on this browser/device.', 'error', 3000);
+    }
+    return;
+  }
+
+  if (cameraModal) {
+    cameraModal.style.display = 'flex';
+  }
+  await startCamera();
+}
+
+function closeCamera() {
+  stopCamera();
+  if (cameraModal) {
+    cameraModal.style.display = 'none';
+  }
+}
+
+async function flipCamera() {
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  await startCamera();
+}
+
+function takePhoto() {
+  if (!cameraVideo || !cameraStream) return;
+
+  const w = cameraVideo.videoWidth || 1280;
+  const h = cameraVideo.videoHeight || 720;
+
+  if (!cameraCanvas) return;
+  cameraCanvas.width = w;
+  cameraCanvas.height = h;
+
+  const ctx = cameraCanvas.getContext('2d');
+  if (!ctx) return;
+
+  // Mirror selfie image naturally like a front camera
+  if (currentFacingMode === 'user') {
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+  }
+
+  ctx.drawImage(cameraVideo, 0, 0, w, h);
+
+  cameraCanvas.toBlob((blob) => {
+    if (!blob) {
+      UI.showToast('Failed to capture photo.', 'error');
+      return;
+    }
+
+    // Create File in RAM only — never written to disk or device gallery!
+    const capturedFile = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+
+    // Instantly close live camera stream
+    closeCamera();
+
+    // Prepare in-memory preview
+    selectedMediaFile = capturedFile;
+    mediaType = 'image';
+    mediaDuration = null;
+
+    if (videoBlobUrl) {
+      URL.revokeObjectURL(videoBlobUrl);
+      videoBlobUrl = null;
+    }
+
+    if (videoPreviewPlayer) {
+      videoPreviewPlayer.pause();
+      videoPreviewPlayer.src = '';
+      videoPreviewPlayer.style.display = 'none';
+    }
+
+    if (photoPreviewImg) {
+      photoPreviewImg.src = URL.createObjectURL(blob);
+      photoPreviewImg.style.display = 'block';
+    }
+
+    photoSend.textContent = 'Send Photo ❤️';
+    photoPreviewContainer.classList.add('active');
+    const inputRowEl = document.querySelector('.input-row');
+    if (inputRowEl) inputRowEl.style.display = 'none';
+  }, 'image/jpeg', 0.92);
+}
+
+// ─── Attach Events for Media Picker & Camera ────────────────────────
+if (photoBtn) photoBtn.addEventListener('click', openMediaPicker);
+if (mediaPickerCloseBtn) mediaPickerCloseBtn.addEventListener('click', closeMediaPicker);
+if (openGalleryBtn) {
+  openGalleryBtn.addEventListener('click', () => {
+    closeMediaPicker();
+    if (photoInput) photoInput.click();
+  });
+}
+if (openCameraBtn) openCameraBtn.addEventListener('click', openCamera);
+if (cameraCloseBtn) cameraCloseBtn.addEventListener('click', closeCamera);
+if (cameraFlipBtn) cameraFlipBtn.addEventListener('click', flipCamera);
+if (cameraShutterBtn) cameraShutterBtn.addEventListener('click', takePhoto);
+if (cameraGalleryShortcutBtn) {
+  cameraGalleryShortcutBtn.addEventListener('click', () => {
+    closeCamera();
+    if (photoInput) photoInput.click();
+  });
+}
+
+// Expose modal helpers for back button handling
+window.closeMediaPicker = closeMediaPicker;
+window.closeCamera = closeCamera;
+window.cancelPhotoSelection = cancelPhotoSelection;
+
+if (mediaPickerModal) {
+  mediaPickerModal.addEventListener('click', (e) => {
+    if (e.target === mediaPickerModal) {
+      closeMediaPicker();
+    }
+  });
+}
 
 photoInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
