@@ -87,62 +87,72 @@ async function startCamera() {
 
   stopCamera();
 
+  // Helper: assign stream to video and wait for first frame (fixes black screen)
+  async function attachStream(stream, mirror) {
+    cameraStream = stream;
+    if (!cameraVideo) return;
+    cameraVideo.srcObject = stream;
+    if (mirror) {
+      cameraVideo.classList.add('mirror');
+    } else {
+      cameraVideo.classList.remove('mirror');
+    }
+    // Wait for metadata so video dimensions are known before play() — prevents black screen
+    await new Promise((resolve) => {
+      if (cameraVideo.readyState >= 1) { resolve(); return; }
+      cameraVideo.addEventListener('loadedmetadata', resolve, { once: true });
+      setTimeout(resolve, 2000); // safety timeout
+    });
+    await cameraVideo.play().catch(() => {});
+  }
+
+  const isMirror = currentFacingMode === 'user';
+
+  // Tier 1: Ideal HD quality — no minimums (works on all devices)
   try {
-    const constraints = {
+    const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: currentFacingMode,
-        width: { ideal: 3840, min: 1280 },
-        height: { ideal: 2160, min: 720 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
         frameRate: { ideal: 30 },
       },
       audio: false,
-    };
+    });
+    await attachStream(stream, isMirror);
+    return;
+  } catch (e1) {
+    console.warn('Camera Tier 1 failed:', e1.name, e1.message);
+  }
 
-    try {
-      cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (constraintErr) {
-      // Fallback if min resolution is too high for front camera
-      cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: currentFacingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      });
-    }
+  // Tier 2: Only ask for facingMode — let device pick any resolution
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacingMode },
+      audio: false,
+    });
+    await attachStream(stream, isMirror);
+    return;
+  } catch (e2) {
+    console.warn('Camera Tier 2 failed:', e2.name, e2.message);
+  }
 
-    if (cameraVideo) {
-      cameraVideo.srcObject = cameraStream;
-      if (currentFacingMode === 'user') {
-        cameraVideo.classList.add('mirror');
-      } else {
-        cameraVideo.classList.remove('mirror');
-      }
-      await cameraVideo.play().catch(() => {});
-    }
-  } catch (err) {
-    console.warn('Camera access issue with facingMode:', currentFacingMode, err);
-    // Fallback if environment camera not found (e.g. desktop webcam)
-    if (currentFacingMode === 'environment') {
-      try {
-        currentFacingMode = 'user';
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false,
-        });
-        if (cameraVideo) {
-          cameraVideo.srcObject = cameraStream;
-          cameraVideo.classList.add('mirror');
-          await cameraVideo.play().catch(() => {});
-        }
-        return;
-      } catch (fallbackErr) {
-        console.error('Fallback camera error:', fallbackErr);
-      }
-    }
-
+  // Tier 3: Fully unconstrained (any camera, any resolution) — last resort
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    currentFacingMode = 'user'; // unknown facing, apply mirror as safe default
+    await attachStream(stream, true);
+    return;
+  } catch (e3) {
+    console.warn('Camera Tier 3 failed:', e3.name, e3.message);
     closeCamera();
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-      UI.showToast('Camera permission denied. Please allow camera access in browser.', 'error');
+    if (e3.name === 'NotAllowedError' || e3.name === 'PermissionDeniedError') {
+      // Show guide modal — user needs to go to browser settings
+      showCameraPermModal();
+    } else if (e3.name === 'NotFoundError' || e3.name === 'DevicesNotFoundError') {
+      UI.showToast('No camera found on this device.', 'error', 3000);
     } else {
-      UI.showToast('Could not access camera. Please check permissions.', 'error');
+      UI.showToast('Could not access camera. Try choosing from Gallery instead.', 'error', 3500);
     }
   }
 }
@@ -159,6 +169,39 @@ function stopCamera() {
   }
 }
 
+// ─── Camera Permission Guide Modal ───────────────────────────────────
+const cameraPermissionModal = document.getElementById('cameraPermissionModal');
+const cameraPermTryAgainBtn = document.getElementById('cameraPermTryAgainBtn');
+const cameraPermCloseBtn = document.getElementById('cameraPermCloseBtn');
+
+function showCameraPermModal() {
+  if (cameraPermissionModal) cameraPermissionModal.style.display = 'flex';
+}
+
+function hideCameraPermModal() {
+  if (cameraPermissionModal) cameraPermissionModal.style.display = 'none';
+}
+
+if (cameraPermTryAgainBtn) {
+  cameraPermTryAgainBtn.addEventListener('click', async () => {
+    hideCameraPermModal();
+    // Open camera modal first so user sees a loading state
+    if (cameraModal) cameraModal.style.display = 'flex';
+    await startCamera();
+    // If stream failed (still no srcObject), show the guide again
+    if (!cameraStream) {
+      if (cameraModal) cameraModal.style.display = 'none';
+      showCameraPermModal();
+    }
+  });
+}
+
+if (cameraPermCloseBtn) {
+  cameraPermCloseBtn.addEventListener('click', () => {
+    hideCameraPermModal();
+  });
+}
+
 async function openCamera() {
   closeMediaPicker();
 
@@ -171,11 +214,37 @@ async function openCamera() {
     return;
   }
 
-  if (cameraModal) {
-    cameraModal.style.display = 'flex';
+  // Check current permission state using Permissions API (supported on Chrome/Android)
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const permResult = await navigator.permissions.query({ name: 'camera' });
+
+      if (permResult.state === 'denied') {
+        // Browser has remembered "Block" — we cannot re-prompt, show settings guide
+        showCameraPermModal();
+        return;
+      }
+
+      // If 'prompt': browser will show its native dialog — open modal first,
+      // then startCamera will trigger the prompt
+      if (permResult.state === 'prompt') {
+        // Show permission guide so user knows what to expect
+        showCameraPermModal();
+        return;
+      }
+      // state === 'granted': fall through and open camera directly
+    }
+  } catch (_) {
+    // Permissions API not supported (e.g. Safari) — try directly
   }
+
+  if (cameraModal) cameraModal.style.display = 'flex';
   await startCamera();
+  if (!cameraStream) {
+    if (cameraModal) cameraModal.style.display = 'none';
+  }
 }
+
 
 function closeCamera() {
   stopCamera();

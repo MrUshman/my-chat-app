@@ -8,9 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=10.4" />
-  <link rel="preload" href="/css/style.css?v=10.4" as="style" />
-  <link rel="preload" href="/js/chat.js?v=10.4" as="script" />
+  <link rel="stylesheet" href="/css/style.css?v=10.5" />
+  <link rel="preload" href="/css/style.css?v=10.5" as="style" />
+  <link rel="preload" href="/js/chat.js?v=10.5" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
     /* Dedicated Self-Contained Mobile App Layout Guarantee */
@@ -1048,6 +1048,45 @@
     </div>
   </div>
 
+  <!-- Camera Permission Guide Modal -->
+  <div class="modal-overlay" id="cameraPermissionModal" role="dialog" aria-modal="true" aria-label="Camera Permission" style="display:none;">
+    <div class="delete-modal-card mic-permission-card">
+      <div class="mic-perm-icon-wrapper">
+        <div class="mic-perm-icon-pulse"></div>
+        <svg class="mic-perm-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+      </div>
+      <h3 class="delete-modal-title">Camera Access Needed</h3>
+      <p class="delete-modal-subtitle">Photo lene ke liye camera allow kijiye. Ek baar allow karne ke baad yeh dobara nahi poochega. 📸</p>
+
+      <div class="mic-perm-guide">
+        <div class="mic-perm-step">
+          <span class="step-num">1</span>
+          <span>Browser address bar ke paas <strong>🔒 Lock / Tune icon</strong> par tap karein.</span>
+        </div>
+        <div class="mic-perm-step">
+          <span class="step-num">2</span>
+          <span><strong>Permissions / Site Settings</strong> mein jayein aur <strong>Camera</strong> ko <strong>Allow</strong> karein.</span>
+        </div>
+        <div class="mic-perm-step">
+          <span class="step-num">3</span>
+          <span>Niche <strong>Allow / Try Again</strong> par tap karein — camera khul jayega.</span>
+        </div>
+      </div>
+
+      <div class="delete-modal-options">
+        <button type="button" class="btn-profile-save" id="cameraPermTryAgainBtn" style="width:100%; justify-content:center;">
+          <span>📸 Allow / Try Again</span>
+        </button>
+        <button type="button" class="btn-delete-cancel" id="cameraPermCloseBtn">
+          <span>Cancel</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Microphone Permission Guide Modal -->
   <div class="modal-overlay" id="micPermissionModal" role="dialog" aria-modal="true" aria-label="Microphone Permission" style="display:none;">
     <div class="delete-modal-card mic-permission-card">
@@ -1198,10 +1237,10 @@
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=10.4"></script>
-  <script src="/js/emoji.js?v=10.4"></script>
-  <script src="/js/media.js?v=10.4"></script>
-  <script src="/js/socket.js?v=10.4"></script>
-  <script src="/js/chat.js?v=10.4"></script>
+  <script src="/js/ui.js?v=10.5"></script>
+  <script src="/js/emoji.js?v=10.5"></script>
+  <script src="/js/media.js?v=10.5"></script>
+  <script src="/js/socket.js?v=10.5"></script>
+  <script src="/js/chat.js?v=10.5"></script>
 </body>
 </html>

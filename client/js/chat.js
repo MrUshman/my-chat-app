@@ -35,6 +35,10 @@ let unreadMessageIds = [];            // Accumulate before sending read receipt
 const clientToRealIdMap = new Map();
 const pendingStatusUpdates = new Map();
 
+// ─── Perf: O(1) cached DOM pointers (avoid querySelectorAll on every render) ─
+let _lastMsgWrapper = null;   // Last rendered .message-wrapper element
+let _lastDateLabel = null;    // Last rendered date separator label
+
 let activePartnerId = null;
 let lastMessageSnippet = '';
 
@@ -52,9 +56,9 @@ window.getAuthHeaders = getAuthHeaders;
 // ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
 
 // Invalidate stale local cache from previous versions
-if (localStorage.getItem('chat_cache_version') !== 'v10.4') {
+if (localStorage.getItem('chat_cache_version') !== 'v10.5') {
   localStorage.removeItem('cached_messages');
-  localStorage.setItem('chat_cache_version', 'v10.4');
+  localStorage.setItem('chat_cache_version', 'v10.5');
 }
 
 function applyCachedState() {
@@ -127,6 +131,8 @@ function saveMessagesToCache(messages) {
 function clearAndRenderInitialMessages(messages) {
   // Clear any existing cached messages to prevent order inversion or duplicates
   renderedMessageIds.clear();
+  _lastMsgWrapper = null;   // Reset O(1) cache
+  _lastDateLabel = null;
   const elementsToRemove = chatMessages.querySelectorAll('.message-wrapper, .date-separator');
   elementsToRemove.forEach(el => el.remove());
 
@@ -146,6 +152,9 @@ function clearAndRenderInitialMessages(messages) {
 
   if (messages.length > 0) {
     oldestMessageId = messages[0]._id;
+    // Update O(1) cache to last rendered element after fragment is committed
+    _lastMsgWrapper = chatMessages.querySelector('.message-wrapper:last-of-type');
+    _lastDateLabel = lastDateLabel;
     saveMessagesToCache(messages);
   }
   scrollToBottom(false);
@@ -474,20 +483,18 @@ function renderMessage(msg, position = 'append', container = null) {
     }
   }
 
-  // Check if previous message is from same sender (grouping)
-  const allMsgWrappers = chatMessages.querySelectorAll('.message-wrapper');
-  const lastMsgEl = allMsgWrappers[allMsgWrappers.length - 1];
+  // Check if previous message is from same sender (grouping) — O(1) using cached pointer
+  const lastMsgEl = position === 'append' ? _lastMsgWrapper : null;
   const isGrouped = lastMsgEl &&
     lastMsgEl.dataset.sender === (isMe ? 'me' : 'them') &&
     (new Date(msg.createdAt) - new Date(lastMsgEl.dataset.time)) < 60000;
 
-  // Date separator — only append, avoid duplicates
+  // Date separator — only append, avoid duplicates (O(1) cached label)
   if (position === 'append') {
     const msgDate = UI.formatDateLabel(msg.createdAt);
-    const allSeparators = chatMessages.querySelectorAll('.date-separator');
-    const lastSepDate = allSeparators[allSeparators.length - 1]?.dataset.date;
-    if (msgDate !== lastSepDate) {
+    if (msgDate !== _lastDateLabel) {
       chatMessages.appendChild(createDateSeparator(msgDate));
+      _lastDateLabel = msgDate;
     }
   }
 
@@ -607,8 +614,10 @@ function renderMessage(msg, position = 'append', container = null) {
 
   if (position === 'append') {
     chatMessages.appendChild(wrapper);
+    _lastMsgWrapper = wrapper; // Update O(1) cache pointer
   } else if (position === 'fragment' && container) {
     container.appendChild(wrapper);
+    // Note: fragment mode is for initial bulk load — pointer updated after appendChild below
   } else {
     // Prepend — insert after loading spinner
     const ref = topLoadingSpinner ? topLoadingSpinner.nextSibling : chatMessages.firstChild;
@@ -1284,12 +1293,21 @@ function hideTyping(fromUserId = null) {
 
 // ─── Input Events ─────────────────────────────────────────────────
 
+// RAF-batched autoResize token — prevents layout thrash from back-to-back input events
+let _resizeRafPending = false;
+
 function setupInputEvents() {
-  // Ultra-smooth, lag-free input handler — only fires on real text modifications
+  // Ultra-smooth, lag-free input handler — RAF-batched to avoid layout thrashing
   messageInput.addEventListener('input', () => {
-    UI.autoResize(messageInput);
-    updateSendButton();
-    handleTyping();
+    updateSendButton(); // state-guarded: only touches DOM when state flips
+    handleTyping();     // socket emit, not a DOM op
+    if (!_resizeRafPending) {
+      _resizeRafPending = true;
+      requestAnimationFrame(() => {
+        UI.autoResize(messageInput);
+        _resizeRafPending = false;
+      });
+    }
   });
 
   // Send on Enter (Shift+Enter = new line)
