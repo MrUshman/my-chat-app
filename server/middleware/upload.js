@@ -55,7 +55,8 @@ const storage = multer.diskStorage({
 
 // File filter — validate MIME type
 function fileFilter(req, file, cb) {
-  if (ALL_ALLOWED_MIMES.includes(file.mimetype)) {
+  const cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+  if (ALL_ALLOWED_MIMES.includes(cleanMime)) {
     cb(null, true);
   } else {
     cb(new Error(`File type not allowed: ${file.mimetype}`), false);

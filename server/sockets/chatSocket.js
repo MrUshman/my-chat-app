@@ -31,24 +31,38 @@ function unregisterUser(userId, socketId) {
   }
 }
 
-function isUserOnline(userId, ioInstance) {
+function isUserOnline(userId, ioInstance, excludeSocketId = null) {
   if (!userId) return false;
   const uid = userId.toString();
 
   // 1. Direct validation against live Socket.IO connection map
   if (ioInstance && ioInstance.sockets && ioInstance.sockets.sockets) {
-    for (const [, liveSocket] of ioInstance.sockets.sockets) {
+    const activeSocketIds = new Set();
+    let hasLiveSocket = false;
+
+    for (const [sId, liveSocket] of ioInstance.sockets.sockets) {
+      if (excludeSocketId && sId === excludeSocketId) continue;
       if (liveSocket.connected && liveSocket.user?._id?.toString() === uid) {
-        registerUser(uid, liveSocket.id);
-        return true;
+        activeSocketIds.add(sId);
+        hasLiveSocket = true;
       }
+    }
+
+    if (hasLiveSocket) {
+      onlineUsers.set(uid, activeSocketIds);
+      return true;
+    } else {
+      onlineUsers.delete(uid);
+      return false;
     }
   }
 
-  // 2. Map-based fallback check
+  // 2. Map-based fallback check (only when ioInstance is not provided)
   if (onlineUsers.has(uid)) {
     const socketSet = onlineUsers.get(uid);
+    if (excludeSocketId) socketSet.delete(excludeSocketId);
     if (socketSet && socketSet.size > 0) return true;
+    onlineUsers.delete(uid);
   }
 
   return false;
@@ -398,7 +412,8 @@ function initChatSocket(io) {
     // ─── Explicit Client Offline Event (on tab close/hide) ───────────────────
     socket.on('client_offline', async () => {
       unregisterUser(userId, socket.id);
-      if (!isUserOnline(userId, io)) {
+      if (!isUserOnline(userId, io, socket.id)) {
+        onlineUsers.delete(userId);
         const lastSeen = new Date();
         try {
           await User.findByIdAndUpdate(user._id, { lastSeen });
@@ -414,7 +429,8 @@ function initChatSocket(io) {
       unregisterUser(userId, socket.id);
 
       // Only broadcast offline if user has no more active live sockets
-      if (!isUserOnline(userId, io)) {
+      if (!isUserOnline(userId, io, socket.id)) {
+        onlineUsers.delete(userId);
         const lastSeen = new Date();
 
         try {

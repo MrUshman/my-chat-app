@@ -1179,8 +1179,14 @@
         <button type="button" class="camera-top-btn" id="cameraCloseBtn" aria-label="Close Camera" title="Close Camera">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
-        <span class="camera-privacy-badge">🔒 Private &bull; In-App Camera</span>
+        <span class="camera-privacy-badge" id="cameraModeBadge">🔒 Private &bull; In-App Camera</span>
         <div class="camera-top-spacer" style="width: 44px;"></div>
+      </div>
+
+      <!-- Recording Timer Overlay (shows while video recording) -->
+      <div class="camera-rec-overlay" id="cameraRecOverlay" style="display:none;">
+        <span class="camera-rec-dot"></span>
+        <span class="camera-rec-timer" id="cameraRecTimer">0:00</span>
       </div>
 
       <!-- Live Video Stream -->
@@ -1200,10 +1206,24 @@
           </svg>
         </button>
 
-        <!-- Center: Main Shutter Button -->
-        <button type="button" class="camera-shutter-btn" id="cameraShutterBtn" aria-label="Take Photo" title="Take Photo">
-          <div class="shutter-inner"></div>
-        </button>
+        <!-- Center: Mode Tabs + Shutter/Record Button -->
+        <div class="camera-center-controls">
+          <!-- Photo / Video Mode Tabs -->
+          <div class="camera-mode-tabs">
+            <button type="button" class="camera-mode-tab active" id="cameraPhotoModeBtn" data-mode="photo">📷 Photo</button>
+            <button type="button" class="camera-mode-tab" id="cameraVideoModeBtn" data-mode="video">🎥 Video</button>
+          </div>
+
+          <!-- Shutter (photo mode) -->
+          <button type="button" class="camera-shutter-btn" id="cameraShutterBtn" aria-label="Take Photo" title="Take Photo">
+            <div class="shutter-inner"></div>
+          </button>
+
+          <!-- Record Button (video mode, hidden by default) -->
+          <button type="button" class="camera-record-btn" id="cameraRecordBtn" aria-label="Start Recording" title="Start/Stop Video Recording" style="display:none;">
+            <div class="record-inner" id="cameraRecordInner"></div>
+          </button>
+        </div>
 
         <!-- Right: Flip Camera (Front / Back) -->
         <button type="button" class="camera-side-action-btn" id="cameraFlipBtn" aria-label="Flip Camera" title="Flip Camera">
@@ -1214,6 +1234,7 @@
       </div>
     </div>
   </div>
+
 
   <!-- Desktop Right-Click Context Menu -->
   <div id="msgContextMenu" class="msg-context-menu" style="display:none;" role="menu">

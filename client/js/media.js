@@ -58,8 +58,22 @@ const cameraFlipBtn = document.getElementById('cameraFlipBtn');
 const cameraShutterBtn = document.getElementById('cameraShutterBtn');
 const cameraGalleryShortcutBtn = document.getElementById('cameraGalleryShortcutBtn');
 
+// Photo / Video mode and video recorder DOM elements
+const cameraRecOverlay = document.getElementById('cameraRecOverlay');
+const cameraRecTimer = document.getElementById('cameraRecTimer');
+const cameraPhotoModeBtn = document.getElementById('cameraPhotoModeBtn');
+const cameraVideoModeBtn = document.getElementById('cameraVideoModeBtn');
+const cameraRecordBtn = document.getElementById('cameraRecordBtn');
+const cameraRecordInner = document.getElementById('cameraRecordInner');
+
 let cameraStream = null;
 let currentFacingMode = 'environment'; // default to back camera, fallback to front
+let currentCameraMode = 'photo'; // 'photo' | 'video'
+let videoMediaRecorder = null;
+let videoRecordedChunks = [];
+let videoRecordingTimerInterval = null;
+let videoRecordingStartTime = 0;
+let isVideoRecording = false;
 
 function openMediaPicker() {
   if (isUploading) return;
@@ -239,23 +253,235 @@ async function openCamera() {
   }
 
   if (cameraModal) cameraModal.style.display = 'flex';
+  setCameraMode('photo'); // default to photo mode on open
   await startCamera();
   if (!cameraStream) {
     if (cameraModal) cameraModal.style.display = 'none';
   }
 }
 
-
 function closeCamera() {
+  if (isVideoRecording) {
+    stopVideoRecording(true); // discard recording if closed while filming
+  }
   stopCamera();
   if (cameraModal) {
     cameraModal.style.display = 'none';
   }
+  setCameraMode('photo');
 }
 
 async function flipCamera() {
+  if (isVideoRecording) return;
   currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
   await startCamera();
+}
+
+function setCameraMode(mode) {
+  if (isVideoRecording) {
+    UI.showToast('Please stop video recording first.', 'info');
+    return;
+  }
+  currentCameraMode = mode;
+  if (mode === 'video') {
+    if (cameraPhotoModeBtn) cameraPhotoModeBtn.classList.remove('active');
+    if (cameraVideoModeBtn) cameraVideoModeBtn.classList.add('active');
+    if (cameraShutterBtn) cameraShutterBtn.style.display = 'none';
+    if (cameraRecordBtn) cameraRecordBtn.style.display = 'flex';
+    // If live camera stream exists and doesn't have an audio track yet, attach one
+    if (cameraStream && cameraStream.getAudioTracks().length === 0 && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((audioStream) => {
+        const audioTrack = audioStream.getAudioTracks()[0];
+        if (audioTrack && cameraStream) {
+          cameraStream.addTrack(audioTrack);
+        }
+      }).catch((e) => {
+        console.warn('Microphone permission not granted for camera video:', e);
+      });
+    }
+  } else {
+    if (cameraPhotoModeBtn) cameraPhotoModeBtn.classList.add('active');
+    if (cameraVideoModeBtn) cameraVideoModeBtn.classList.remove('active');
+    if (cameraShutterBtn) cameraShutterBtn.style.display = 'flex';
+    if (cameraRecordBtn) cameraRecordBtn.style.display = 'none';
+    // If switching back to photo mode, stop and remove audio tracks to release microphone
+    if (cameraStream) {
+      cameraStream.getAudioTracks().forEach(track => {
+        try { track.stop(); } catch(e) {}
+        try { cameraStream.removeTrack(track); } catch(e) {}
+      });
+    }
+  }
+}
+
+async function startVideoRecording() {
+  if (!cameraStream || isVideoRecording) return;
+
+  // Make sure we have an audio track if possible
+  if (cameraStream.getAudioTracks().length === 0 && navigator.mediaDevices?.getUserMedia) {
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioTrack = audioStream.getAudioTracks()[0];
+      if (audioTrack && cameraStream) {
+        cameraStream.addTrack(audioTrack);
+      }
+    } catch (micErr) {
+      console.warn('Video recording without audio (mic denied/unavailable):', micErr);
+    }
+  }
+
+  // Pick best supported video MIME type
+  const mimeTypes = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4',
+  ];
+  let chosenMime = '';
+  for (const m of mimeTypes) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) {
+      chosenMime = m;
+      break;
+    }
+  }
+
+  videoRecordedChunks = [];
+  try {
+    const options = chosenMime ? { mimeType: chosenMime } : {};
+    videoMediaRecorder = new MediaRecorder(cameraStream, options);
+  } catch (err) {
+    console.error('Cannot create MediaRecorder for video:', err);
+    UI.showToast('Video recording is not supported on this browser.', 'error');
+    return;
+  }
+
+  videoMediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) {
+      videoRecordedChunks.push(e.data);
+    }
+  };
+
+  videoMediaRecorder.onstop = () => {
+    finishVideoRecording(chosenMime);
+  };
+
+  try {
+    videoMediaRecorder.start(250);
+    isVideoRecording = true;
+    videoRecordingStartTime = Date.now();
+
+    // UI Updates
+    if (cameraRecordBtn) cameraRecordBtn.classList.add('recording');
+    if (cameraRecOverlay) cameraRecOverlay.style.display = 'flex';
+    if (cameraRecTimer) cameraRecTimer.textContent = '0:00';
+    if (cameraFlipBtn) {
+      cameraFlipBtn.style.opacity = '0.3';
+      cameraFlipBtn.style.pointerEvents = 'none';
+    }
+    if (cameraPhotoModeBtn) cameraPhotoModeBtn.style.pointerEvents = 'none';
+
+    clearInterval(videoRecordingTimerInterval);
+    videoRecordingTimerInterval = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - videoRecordingStartTime) / 1000);
+      const m = Math.floor(elapsedSec / 60);
+      const s = elapsedSec % 60;
+      if (cameraRecTimer) {
+        cameraRecTimer.textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
+      }
+      // Max 5 minutes limit
+      if (elapsedSec >= 300) {
+        stopVideoRecording(false);
+      }
+    }, 1000);
+  } catch (err) {
+    console.error('Failed to start video recording:', err);
+    UI.showToast('Could not start recording. Please try again.', 'error');
+    isVideoRecording = false;
+  }
+}
+
+function stopVideoRecording(discard = false) {
+  if (!isVideoRecording || !videoMediaRecorder) return;
+  clearInterval(videoRecordingTimerInterval);
+  videoRecordingTimerInterval = null;
+  isVideoRecording = false;
+
+  if (cameraRecordBtn) cameraRecordBtn.classList.remove('recording');
+  if (cameraRecOverlay) cameraRecOverlay.style.display = 'none';
+  if (cameraFlipBtn) {
+    cameraFlipBtn.style.opacity = '';
+    cameraFlipBtn.style.pointerEvents = '';
+  }
+  if (cameraPhotoModeBtn) cameraPhotoModeBtn.style.pointerEvents = '';
+
+  if (discard) {
+    videoRecordedChunks = [];
+    try {
+      videoMediaRecorder.onstop = null;
+      if (videoMediaRecorder.state !== 'inactive') {
+        videoMediaRecorder.stop();
+      }
+    } catch (_) {}
+    return;
+  }
+
+  try {
+    if (videoMediaRecorder.state !== 'inactive') {
+      videoMediaRecorder.stop();
+    }
+  } catch (err) {
+    console.warn('Error stopping videoMediaRecorder:', err);
+  }
+}
+
+function finishVideoRecording(usedMimeType) {
+  if (!videoRecordedChunks || videoRecordedChunks.length === 0) {
+    UI.showToast('No video data captured.', 'error');
+    return;
+  }
+
+  const durationSec = Math.max(1, Math.round((Date.now() - videoRecordingStartTime) / 1000));
+  const cleanMime = (usedMimeType || 'video/webm').split(';')[0].trim().toLowerCase();
+  const ext = cleanMime.includes('mp4') ? 'mp4' : 'webm';
+  const videoBlob = new Blob(videoRecordedChunks, { type: cleanMime });
+  videoRecordedChunks = [];
+
+  const maxMB = 50;
+  if (videoBlob.size > maxMB * 1024 * 1024) {
+    UI.showToast(`Recorded video is too large (max ${maxMB}MB).`, 'error');
+    return;
+  }
+
+  const videoFile = new File([videoBlob], `video-${Date.now()}.${ext}`, { type: cleanMime });
+
+  // Close live camera modal & stop stream
+  closeCamera();
+
+  // Setup preview modal
+  selectedMediaFile = videoFile;
+  mediaType = 'video';
+  mediaDuration = durationSec;
+
+  if (videoBlobUrl) {
+    URL.revokeObjectURL(videoBlobUrl);
+    videoBlobUrl = null;
+  }
+
+  videoBlobUrl = URL.createObjectURL(videoBlob);
+  if (photoPreviewImg) {
+    photoPreviewImg.src = '';
+    photoPreviewImg.style.display = 'none';
+  }
+  if (videoPreviewPlayer) {
+    videoPreviewPlayer.src = videoBlobUrl;
+    videoPreviewPlayer.style.display = 'block';
+  }
+
+  photoSend.textContent = 'Send Video 🎥';
+  photoPreviewContainer.classList.add('active');
+  const inputRowEl = document.querySelector('.input-row');
+  if (inputRowEl) inputRowEl.style.display = 'none';
 }
 
 async function takePhoto() {
@@ -382,6 +608,17 @@ if (openCameraBtn) openCameraBtn.addEventListener('click', openCamera);
 if (cameraCloseBtn) cameraCloseBtn.addEventListener('click', closeCamera);
 if (cameraFlipBtn) cameraFlipBtn.addEventListener('click', flipCamera);
 if (cameraShutterBtn) cameraShutterBtn.addEventListener('click', takePhoto);
+if (cameraPhotoModeBtn) cameraPhotoModeBtn.addEventListener('click', () => setCameraMode('photo'));
+if (cameraVideoModeBtn) cameraVideoModeBtn.addEventListener('click', () => setCameraMode('video'));
+if (cameraRecordBtn) {
+  cameraRecordBtn.addEventListener('click', () => {
+    if (!isVideoRecording) {
+      startVideoRecording();
+    } else {
+      stopVideoRecording(false);
+    }
+  });
+}
 if (cameraGalleryShortcutBtn) {
   cameraGalleryShortcutBtn.addEventListener('click', () => {
     closeCamera();

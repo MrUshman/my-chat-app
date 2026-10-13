@@ -98,15 +98,46 @@ function initSocket() {
     }
   });
 
+  // Mobile Android/iOS Page Lifecycle API (freeze & resume)
+  document.addEventListener('freeze', () => {
+    if (socket && socket.connected) {
+      try { socket.emit('client_offline'); } catch(e) {}
+    }
+  });
+
+  document.addEventListener('resume', () => {
+    if (socket) {
+      if (socket.disconnected) socket.connect();
+      else if (socket.connected) {
+        try { socket.emit('client_online'); } catch(e) {}
+        try { socket.emit('get_partner_status'); } catch(e) {}
+      }
+    }
+  });
+
+  let backgroundOfflineTimer = null;
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
+      if (backgroundOfflineTimer) {
+        clearTimeout(backgroundOfflineTimer);
+        backgroundOfflineTimer = null;
+      }
       if (socket) {
-        if (socket.disconnected) socket.connect();
-        else if (socket.connected) {
+        if (socket.disconnected) {
+          socket.connect();
+        } else if (socket.connected) {
           try { socket.emit('client_online'); } catch(e) {}
           try { socket.emit('get_partner_status'); } catch(e) {}
         }
       }
+    } else if (document.visibilityState === 'hidden') {
+      if (backgroundOfflineTimer) clearTimeout(backgroundOfflineTimer);
+      backgroundOfflineTimer = setTimeout(() => {
+        if (document.visibilityState === 'hidden' && socket && socket.connected) {
+          try { socket.emit('client_offline'); } catch(e) {}
+        }
+      }, 3000);
     }
   });
 
@@ -172,20 +203,28 @@ function initSocket() {
   });
 
   socket.on('user_online', ({ userId }) => {
+    const currentUserId = window.Chat?.getCurrentUser ? window.Chat.getCurrentUser()?._id?.toString() : null;
+    if (currentUserId && userId && userId.toString() === currentUserId) {
+      return; // Ignore own online event
+    }
     const currentPartner = window.Chat && window.Chat.getPartner ? window.Chat.getPartner() : null;
     const partnerId = currentPartner?._id?.toString() || window._lastPartnerStatus?.partner?._id?.toString();
     if (partnerId && userId && userId.toString() !== partnerId) {
-      return; // Ignore online events for other users or self
+      return; // Ignore online events for other users
     }
     if (window._lastPartnerStatus) window._lastPartnerStatus.isOnline = true;
     if (window.Chat && window.Chat.setPartnerOnline) window.Chat.setPartnerOnline(true);
   });
 
   socket.on('user_offline', ({ userId, lastSeen }) => {
+    const currentUserId = window.Chat?.getCurrentUser ? window.Chat.getCurrentUser()?._id?.toString() : null;
+    if (currentUserId && userId && userId.toString() === currentUserId) {
+      return; // Ignore own offline event
+    }
     const currentPartner = window.Chat && window.Chat.getPartner ? window.Chat.getPartner() : null;
     const partnerId = currentPartner?._id?.toString() || window._lastPartnerStatus?.partner?._id?.toString();
     if (partnerId && userId && userId.toString() !== partnerId) {
-      return; // Ignore offline events for other users or self
+      return; // Ignore offline events for other users
     }
     if (window._lastPartnerStatus) {
       window._lastPartnerStatus.isOnline = false;
