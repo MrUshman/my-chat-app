@@ -162,6 +162,7 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       duration,
       expiresAt,
       replyTo: req.body.replyTo || null,
+      clientMessageId: req.body.clientMessageId || null,
     });
 
     // Populate sender & receiver info for socket broadcast

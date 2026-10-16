@@ -590,9 +590,13 @@ function renderMessage(msg, position = 'append', container = null) {
   // Status icon (only for my messages)
   let statusHtml = '';
   if (isMe) {
-    const statusClass = msg.readAt ? 'read' : msg.deliveredAt ? 'delivered' : 'sent';
-    const checkmarks = (msg.readAt || msg.deliveredAt) ? DOUBLE_TICK_SVG : SINGLE_TICK_SVG;
-    statusHtml = `<span class="message-status ${statusClass}" id="status-${msg._id}">${checkmarks}</span>`;
+    if (msg.status === 'sending') {
+      statusHtml = `<span class="message-status sending" id="status-${msg._id}">🕒</span>`;
+    } else {
+      const statusClass = msg.readAt ? 'read' : msg.deliveredAt ? 'delivered' : 'sent';
+      const checkmarks = (msg.readAt || msg.deliveredAt) ? DOUBLE_TICK_SVG : SINGLE_TICK_SVG;
+      statusHtml = `<span class="message-status ${statusClass}" id="status-${msg._id}">${checkmarks}</span>`;
+    }
   }
 
   // Build Quoted Reply Card if message was sent as a reply
@@ -887,6 +891,86 @@ async function sendMessage() {
     updateSendButton();
   }
 }
+
+// ─── Optimistic Media Sending (Instant WhatsApp UI) ─────────────
+
+function sendOptimisticMedia(mediaInfo) {
+  if (!currentUser) return null;
+  const clientMessageId = `client-media-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  const replyTargetObj = currentReplyTarget;
+
+  const optimisticMsg = {
+    _id: clientMessageId,
+    clientMessageId,
+    senderId: { _id: currentUser._id, displayName: currentUser.displayName },
+    receiverId: partner ? { _id: partner._id, displayName: partner.displayName } : {},
+    type: mediaInfo.type,
+    mediaUrl: mediaInfo.blobUrl,
+    mimeType: mediaInfo.mimeType,
+    duration: mediaInfo.duration || null,
+    status: 'sending',
+    replyTo: replyTargetObj ? {
+      _id: replyTargetObj.id,
+      text: replyTargetObj.textSnippet,
+      senderId: { displayName: replyTargetObj.senderName },
+    } : null,
+    createdAt: new Date().toISOString(),
+    deliveredAt: null,
+    readAt: null,
+  };
+
+  renderMessage(optimisticMsg, 'append');
+  scrollToBottom();
+  return clientMessageId;
+}
+
+function resolveOptimisticMedia(clientMessageId, realMsg) {
+  if (!realMsg || !realMsg._id) return;
+  const realId = realMsg._id.toString();
+  clientToRealIdMap.set(clientMessageId, realId);
+  clientToRealIdMap.set(realId, clientMessageId);
+
+  const wrapper = chatMessages.querySelector(`[data-message-id="${clientMessageId}"]`);
+  if (wrapper) {
+    wrapper.dataset.messageId = realId;
+    const statusEl = wrapper.querySelector('.message-status');
+    if (statusEl) {
+      statusEl.id = `status-${realId}`;
+      statusEl.className = 'message-status sent';
+      statusEl.innerHTML = SINGLE_TICK_SVG;
+    }
+    // Update mediaUrl if real persistent URL is provided
+    if (realMsg.mediaUrl) {
+      const img = wrapper.querySelector('img');
+      if (img && img.src.startsWith('blob:')) {
+        img.src = realMsg.mediaUrl;
+      }
+      const vid = wrapper.querySelector('video');
+      if (vid && vid.src.startsWith('blob:')) {
+        vid.src = realMsg.mediaUrl;
+      }
+    }
+    renderedMessageIds.delete(clientMessageId);
+    renderedMessageIds.add(realId);
+  }
+
+  if (pendingStatusUpdates.has(realId)) {
+    const pending = pendingStatusUpdates.get(realId);
+    pendingStatusUpdates.delete(realId);
+    updateMessageStatus(realId, pending.status, pending.time);
+  }
+}
+
+function failOptimisticMedia(clientMessageId) {
+  const wrapper = chatMessages.querySelector(`[data-message-id="${clientMessageId}"]`);
+  if (wrapper) wrapper.remove();
+  renderedMessageIds.delete(clientMessageId);
+}
+
+window.sendOptimisticMedia = sendOptimisticMedia;
+window.resolveOptimisticMedia = resolveOptimisticMedia;
+window.failOptimisticMedia = failOptimisticMedia;
+window.getCurrentReplyTarget = () => currentReplyTarget;
 
 // ─── Notifications (Mobile PWA & Desktop) ─────────────────────────
 

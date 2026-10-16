@@ -354,8 +354,9 @@ async function startVideoRecording() {
   videoRecordedChunks = [];
   try {
     const options = chosenMime ? { mimeType: chosenMime } : {};
-    // Optimal 720p HD bitrate: 2.5 Mbps (fast upload, smooth 30fps, no frame drops)
-    options.videoBitsPerSecond = 2500000;
+    // Optimal 720p HD bitrate: 1.8 Mbps (fast upload, smooth 30fps, compact size)
+    options.videoBitsPerSecond = 1800000;
+    options.audioBitsPerSecond = 96000;
     videoMediaRecorder = new MediaRecorder(cameraStream, options);
   } catch (err) {
     console.error('Cannot create MediaRecorder for video:', err);
@@ -582,15 +583,16 @@ async function takePhoto() {
     const videoTrack = cameraStream.getVideoTracks()[0];
     let capturedBlob = null;
 
-    // 1. Try Native Hardware Still Photo via ImageCapture (Maximum Hardware HD / Megapixels!)
+    // 1. Try Native Hardware Still Photo via ImageCapture (Crisp HD, capped to 1920px max)
     if (window.ImageCapture && videoTrack) {
       try {
         const imageCapture = new window.ImageCapture(videoTrack);
         const capabilities = await imageCapture.getPhotoCapabilities?.().catch(() => null);
         const photoSettings = {};
         if (capabilities) {
-          if (capabilities.imageWidth?.max) photoSettings.imageWidth = capabilities.imageWidth.max;
-          if (capabilities.imageHeight?.max) photoSettings.imageHeight = capabilities.imageHeight.max;
+          const maxDim = 1920;
+          if (capabilities.imageWidth?.max) photoSettings.imageWidth = Math.min(maxDim, capabilities.imageWidth.max);
+          if (capabilities.imageHeight?.max) photoSettings.imageHeight = Math.min(maxDim, capabilities.imageHeight.max);
         }
         const rawBlob = await imageCapture.takePhoto(photoSettings);
 
@@ -606,7 +608,7 @@ async function takePhoto() {
             ctx.translate(imgBitmap.width, 0);
             ctx.scale(-1, 1);
             ctx.drawImage(imgBitmap, 0, 0);
-            capturedBlob = await new Promise(resolve => cameraCanvas.toBlob(resolve, 'image/jpeg', 0.98));
+            capturedBlob = await new Promise(resolve => cameraCanvas.toBlob(resolve, 'image/jpeg', 0.85));
           } else {
             capturedBlob = rawBlob;
           }
@@ -621,8 +623,8 @@ async function takePhoto() {
     // 2. High-Res Canvas Fallback (if ImageCapture is unavailable or Safari)
     if (!capturedBlob) {
       if (!cameraCanvas) return;
-      const w = cameraVideo.videoWidth || 1920;
-      const h = cameraVideo.videoHeight || 1080;
+      const w = cameraVideo.videoWidth || 1280;
+      const h = cameraVideo.videoHeight || 720;
 
       cameraCanvas.width = w;
       cameraCanvas.height = h;
@@ -641,7 +643,7 @@ async function takePhoto() {
 
       ctx.drawImage(cameraVideo, 0, 0, w, h);
 
-      capturedBlob = await new Promise(resolve => cameraCanvas.toBlob(resolve, 'image/jpeg', 0.98));
+      capturedBlob = await new Promise(resolve => cameraCanvas.toBlob(resolve, 'image/jpeg', 0.85));
     }
 
     if (!capturedBlob) {
@@ -820,68 +822,150 @@ function cancelPhotoSelection() {
   if (inputRowEl) inputRowEl.style.display = 'flex';
 }
 
+// ─── Fast In-Memory Image Compression (WhatsApp Standard: 1600px HD @ 0.84) ─────
+async function compressImageIfNeeded(file) {
+  if (!file || !file.type || !file.type.startsWith('image/')) return file;
+  if (file.type.includes('gif')) return file;
+  if (file.size <= 300 * 1024) return file; // Already small enough
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxDim = 1600;
+      let { width, height } = img;
+
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(file);
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob((blob) => {
+        if (!blob || blob.size >= file.size) {
+          resolve(file);
+        } else {
+          const compressed = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+          resolve(compressed);
+        }
+      }, 'image/jpeg', 0.84);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 photoSend.addEventListener('click', uploadAndSendMedia);
 
 async function uploadAndSendMedia() {
   if (!selectedMediaFile || isUploading) return;
 
   const currentType = mediaType;
-  isUploading = true;
-  photoSend.disabled = true;
-  photoSend.textContent = currentType === 'video' ? 'Uploading Video...' : 'Uploading Photo...';
+  const currentDuration = mediaDuration;
+  let fileToSend = selectedMediaFile;
 
-  try {
-    const formData = new FormData();
-    formData.append('file', selectedMediaFile);
-    if (mediaDuration) {
-      formData.append('duration', String(mediaDuration));
-    }
+  // Optimistic preview URL from RAM
+  const previewBlobUrl = currentType === 'image'
+    ? (photoPreviewImg && photoPreviewImg.src ? photoPreviewImg.src : URL.createObjectURL(fileToSend))
+    : (videoBlobUrl || URL.createObjectURL(fileToSend));
 
-    // Attach replyTo ID if currently replying
-    if (window.currentReplyingMessageId) {
-      formData.append('replyTo', window.currentReplyingMessageId);
-    }
+  const replyToId = window.currentReplyingMessageId || null;
 
-    const headers = typeof window.getAuthHeaders === 'function' ? window.getAuthHeaders() : {};
-    const res = await fetch('/api/media/upload', {
-      method: 'POST',
-      headers,
-      body: formData,
-      credentials: 'include',
+  // 1. Instantly display optimistic bubble in chat (0ms lag!)
+  let clientMessageId = null;
+  if (typeof window.sendOptimisticMedia === 'function') {
+    clientMessageId = window.sendOptimisticMedia({
+      type: currentType,
+      blobUrl: previewBlobUrl,
+      duration: currentDuration,
+      mimeType: fileToSend.type,
     });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      UI.showToast(data.error || 'Upload failed.', 'error');
-      return;
-    }
-
-    // Broadcast via socket
-    if (window.ChatSocket) {
-      window.ChatSocket.sendMediaMessage(data.message._id);
-    }
-
-    // Play WhatsApp send pop sound
-    if (typeof window.playMessageSentSound === 'function') {
-      window.playMessageSentSound();
-    }
-
-    // Reset reply bar if open
-    if (typeof window.cancelQuotedReply === 'function') {
-      window.cancelQuotedReply();
-    }
-
-    cancelPhotoSelection();
-    UI.showToast(currentType === 'video' ? '🎥 Video sent!' : '📷 Photo sent!', 'success');
-  } catch (err) {
-    UI.showToast('Upload failed. Check your connection.', 'error');
-    console.error('Media upload error:', err);
-  } finally {
-    isUploading = false;
-    photoSend.disabled = false;
-    photoSend.textContent = 'Send Media ❤️';
   }
+
+  // 2. Instantly close the preview screen & return to conversation!
+  cancelPhotoSelection();
+
+  // Reset reply preview if open
+  if (typeof window.cancelQuotedReply === 'function') {
+    window.cancelQuotedReply();
+  }
+
+  // 3. Fast background upload
+  (async () => {
+    try {
+      // Compress image if needed (shrinks 15MB down to ~250KB in milliseconds)
+      if (currentType === 'image') {
+        fileToSend = await compressImageIfNeeded(fileToSend);
+      }
+
+      const formData = new FormData();
+      formData.append('file', fileToSend);
+      if (currentDuration) {
+        formData.append('duration', String(currentDuration));
+      }
+      if (replyToId) {
+        formData.append('replyTo', replyToId);
+      }
+      if (clientMessageId) {
+        formData.append('clientMessageId', clientMessageId);
+      }
+
+      const headers = typeof window.getAuthHeaders === 'function' ? window.getAuthHeaders() : {};
+      const res = await fetch('/api/media/upload', {
+        method: 'POST',
+        headers,
+        body: formData,
+        credentials: 'include',
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      // Upgrade optimistic bubble with real server ID and single tick
+      if (clientMessageId && typeof window.resolveOptimisticMedia === 'function') {
+        window.resolveOptimisticMedia(clientMessageId, data.message);
+      }
+
+      // Broadcast to partner via socket
+      if (window.ChatSocket) {
+        window.ChatSocket.sendMediaMessage(data.message._id);
+      }
+
+      // Play message sent pop sound
+      if (typeof window.playMessageSentSound === 'function') {
+        window.playMessageSentSound();
+      }
+    } catch (err) {
+      console.error('Media upload error:', err);
+      UI.showToast(`Failed to send ${currentType}: ${err.message || 'Network error'}`, 'error');
+      if (clientMessageId && typeof window.failOptimisticMedia === 'function') {
+        window.failOptimisticMedia(clientMessageId);
+      }
+    }
+  })();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1072,56 +1156,82 @@ voicePreviewSend.addEventListener('click', uploadAndSendVoice);
 async function uploadAndSendVoice() {
   if (!recordedBlob || isUploading) return;
 
-  isUploading = true;
-  voicePreviewSend.disabled = true;
-  voicePreviewSend.textContent = 'Sending...';
+  const currentDuration = recordingSeconds;
+  const cleanMime = (recordedBlob.type || 'audio/webm').split(';')[0].trim();
+  const ext = cleanMime.includes('ogg') ? 'ogg'
+    : cleanMime.includes('mp4') ? 'mp4'
+    : 'webm';
 
-  try {
-    const cleanMime = (recordedBlob.type || 'audio/webm').split(';')[0].trim();
-    const ext = cleanMime.includes('ogg') ? 'ogg'
-      : cleanMime.includes('mp4') ? 'mp4'
-      : 'webm';
+  const file = new File([recordedBlob], `voice.${ext}`, { type: cleanMime });
+  const localAudioUrl = previewAudio ? previewAudio.src : URL.createObjectURL(recordedBlob);
+  const replyToId = window.currentReplyingMessageId || null;
 
-    const file = new File([recordedBlob], `voice.${ext}`, { type: cleanMime });
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('duration', String(recordingSeconds));
-
-    const headers = typeof window.getAuthHeaders === 'function' ? window.getAuthHeaders() : {};
-    const res = await fetch('/api/media/upload', {
-      method: 'POST',
-      headers,
-      body: formData,
-      credentials: 'include',
+  // 1. Instantly render optimistic voice bubble in chat
+  let clientMessageId = null;
+  if (typeof window.sendOptimisticMedia === 'function') {
+    clientMessageId = window.sendOptimisticMedia({
+      type: 'audio',
+      blobUrl: localAudioUrl,
+      duration: currentDuration,
+      mimeType: cleanMime,
     });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      UI.showToast(data.error || 'Upload failed.', 'error');
-      return;
-    }
-
-    // Broadcast via socket
-    if (window.ChatSocket) {
-      window.ChatSocket.sendMediaMessage(data.message._id);
-    }
-
-    // Play WhatsApp send pop sound
-    if (typeof window.playMessageSentSound === 'function') {
-      window.playMessageSentSound();
-    }
-
-    cancelVoicePreview();
-    UI.showToast('Voice message sent!', 'success');
-  } catch (err) {
-    UI.showToast('Upload failed. Check your connection.', 'error');
-    console.error('Voice upload error:', err);
-  } finally {
-    isUploading = false;
-    voicePreviewSend.disabled = false;
-    voicePreviewSend.textContent = 'Send 🎙️';
   }
+
+  // 2. Instantly dismiss voice preview modal
+  cancelVoicePreview();
+
+  if (typeof window.cancelQuotedReply === 'function') {
+    window.cancelQuotedReply();
+  }
+
+  // 3. Fast background upload
+  (async () => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('duration', String(currentDuration));
+      if (replyToId) {
+        formData.append('replyTo', replyToId);
+      }
+      if (clientMessageId) {
+        formData.append('clientMessageId', clientMessageId);
+      }
+
+      const headers = typeof window.getAuthHeaders === 'function' ? window.getAuthHeaders() : {};
+      const res = await fetch('/api/media/upload', {
+        method: 'POST',
+        headers,
+        body: formData,
+        credentials: 'include',
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      // Upgrade optimistic bubble with real server ID and single tick
+      if (clientMessageId && typeof window.resolveOptimisticMedia === 'function') {
+        window.resolveOptimisticMedia(clientMessageId, data.message);
+      }
+
+      // Broadcast via socket
+      if (window.ChatSocket) {
+        window.ChatSocket.sendMediaMessage(data.message._id);
+      }
+
+      // Play WhatsApp send pop sound
+      if (typeof window.playMessageSentSound === 'function') {
+        window.playMessageSentSound();
+      }
+    } catch (err) {
+      console.error('Voice upload error:', err);
+      UI.showToast('Voice message failed: ' + (err.message || 'Please retry'), 'error');
+      if (clientMessageId && typeof window.failOptimisticMedia === 'function') {
+        window.failOptimisticMedia(clientMessageId);
+      }
+    }
+  })();
 }
 
 // ─── Helper: get best supported audio MIME ────────────────────────

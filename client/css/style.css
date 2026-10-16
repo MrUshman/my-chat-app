@@ -1045,6 +1045,20 @@ body.motion-bubbles::before {
   filter: drop-shadow(0 0 5px rgba(37, 211, 102, 0.6)) !important;
 }
 
+.message-status.sending {
+  font-size: 11px !important;
+  line-height: 1 !important;
+  opacity: 0.85 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  animation: statusClockPulse 1.2s ease-in-out infinite !important;
+}
+
+@keyframes statusClockPulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
 /* Sent Photo & Video Bubble Styling (WhatsApp / Telegram Standard Dimensions) */
 .image-message, .video-message {
   position: relative;

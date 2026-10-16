@@ -104,6 +104,12 @@ const messageSchema = new mongoose.Schema(
       ref: 'Message',
       default: null,
     },
+    // Client-side temporary message ID for instant optimistic deduplication
+    clientMessageId: {
+      type: String,
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true, // adds createdAt and updatedAt
