@@ -819,6 +819,8 @@ async function sendMessage() {
   const text = messageInput.value.trim();
   if (!text) return;
 
+  window._lastSendTime = Date.now();
+
   // Clear input immediately for better UX
   messageInput.value = '';
   messageInput.style.height = 'auto';
@@ -1408,15 +1410,21 @@ function setupInputEvents() {
     }
   });
 
-  // Send button click & touch handlers
-  sendBtn.addEventListener('click', (e) => {
-    e.preventDefault();
+  // Send button click & touch handlers with debounced ghost-click protection
+  let lastSendBtnEventTime = 0;
+  function handleSendAction(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const now = Date.now();
+    if (now - lastSendBtnEventTime < 400) return;
+    lastSendBtnEventTime = now;
     sendMessage();
-  });
-  sendBtn.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    sendMessage();
-  });
+  }
+
+  sendBtn.addEventListener('click', handleSendAction);
+  sendBtn.addEventListener('touchend', handleSendAction);
 
   // Instant, lag-free focus handler (0ms keyboard response)
   messageInput.addEventListener('focus', () => {
@@ -1948,6 +1956,11 @@ function updateSendButton(force = false) {
     if (currentMicBtn) {
       currentMicBtn.style.setProperty('display', 'flex', 'important');
       currentMicBtn.style.setProperty('visibility', 'visible', 'important');
+      // Prevent mobile synthetic touch/click bleed-through to micBtn for 400ms
+      currentMicBtn.style.pointerEvents = 'none';
+      setTimeout(() => {
+        if (currentMicBtn) currentMicBtn.style.pointerEvents = '';
+      }, 400);
     }
     if (inputRow) inputRow.classList.remove('has-text');
   }

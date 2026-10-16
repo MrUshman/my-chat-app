@@ -1003,6 +1003,12 @@ if (micPermTryAgainBtn) {
 micBtn.addEventListener('click', startRecording);
 
 async function startRecording() {
+  // Prevent ghost clicks/taps immediately after sending a message
+  if (window._lastSendTime && (Date.now() - window._lastSendTime < 650)) {
+    console.warn('Ignored ghost recording trigger right after sending message');
+    return;
+  }
+
   if (isUploading) return;
 
   // Check browser support
