@@ -30,6 +30,74 @@ function getExpiresAt(type) {
   return expiresAt;
 }
 
+// Helper: inject or overwrite WebM duration metadata (EBML element 0x4489)
+function fixWebmBufferDuration(buf, durationMs) {
+  try {
+    let infoPos = -1;
+    for (let i = 0; i < buf.length - 4; i++) {
+      if (buf[i] === 0x15 && buf[i+1] === 0x49 && buf[i+2] === 0xA9 && buf[i+3] === 0x66) {
+        infoPos = i;
+        break;
+      }
+    }
+    if (infoPos === -1) return buf;
+
+    let pos = infoPos + 4;
+    const firstByte = buf[pos];
+    let numBytes = 1;
+    let mask = 0x80;
+    while ((firstByte & mask) === 0 && numBytes <= 8) {
+      mask >>= 1;
+      numBytes++;
+    }
+    let infoSize = firstByte & (mask - 1);
+    for (let i = 1; i < numBytes; i++) {
+      infoSize = (infoSize * 256) + buf[pos + i];
+    }
+    const infoDataStart = pos + numBytes;
+    const infoDataEnd = infoDataStart + infoSize;
+
+    // Check if Duration (0x4489) already exists in Info
+    for (let i = infoDataStart; i < infoDataEnd - 2; i++) {
+      if (buf[i] === 0x44 && buf[i+1] === 0x89) {
+        const floatSize = buf[i+2];
+        if (floatSize === 4) {
+          buf.writeFloatBE(durationMs, i + 3);
+          return buf;
+        } else if (floatSize === 8) {
+          buf.writeDoubleBE(durationMs, i + 3);
+          return buf;
+        }
+      }
+    }
+
+    // Inject 0x4489 element
+    const durHeader = Buffer.alloc(7);
+    durHeader[0] = 0x44;
+    durHeader[1] = 0x89;
+    durHeader[2] = 0x84; // 4-byte float
+    durHeader.writeFloatBE(durationMs, 3);
+
+    const newInfoSize = infoSize + 7;
+    let newInfoLenBytes;
+    if (newInfoSize < 127) {
+      newInfoLenBytes = Buffer.from([0x80 | newInfoSize]);
+    } else {
+      newInfoLenBytes = Buffer.from([0x40 | (newInfoSize >> 8), newInfoSize & 0xFF]);
+    }
+
+    const before = buf.subarray(0, infoPos);
+    const infoId = Buffer.from([0x15, 0x49, 0xA9, 0x66]);
+    const infoData = buf.subarray(infoDataStart, infoDataEnd);
+    const after = buf.subarray(infoDataEnd);
+
+    return Buffer.concat([before, infoId, newInfoLenBytes, infoData, durHeader, after]);
+  } catch (err) {
+    console.warn('Error patching WebM buffer duration:', err.message);
+    return buf;
+  }
+}
+
 // POST /api/media/upload — upload image, audio, or video file
 router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
   try {
@@ -52,6 +120,24 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Unsupported file type.' });
     }
 
+    // Parse duration from request (for audio or video)
+    const duration = req.body.duration ? parseFloat(req.body.duration) : null;
+
+    // Server-side WebM duration safeguard: patch duration metadata directly onto file on disk
+    if ((messageType === 'video' || messageType === 'audio') && file.path && fs.existsSync(file.path)) {
+      const isWebm = (file.filename && file.filename.endsWith('.webm')) || (mimeType && mimeType.includes('webm'));
+      if (isWebm && duration && duration > 0) {
+        try {
+          const rawBuffer = fs.readFileSync(file.path);
+          const patched = fixWebmBufferDuration(rawBuffer, duration * 1000);
+          fs.writeFileSync(file.path, patched);
+          file.size = patched.length;
+        } catch (e) {
+          console.warn('Could not patch WebM duration on disk:', e.message);
+        }
+      }
+    }
+
     // Find the other user (receiver)
     const otherUser = await User.findOne({ _id: { $ne: req.user._id } });
     if (!otherUser) {
@@ -63,9 +149,6 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
 
     // Calculate expiration
     const expiresAt = getExpiresAt(messageType);
-
-    // Parse duration from request (for audio or video)
-    const duration = req.body.duration ? parseFloat(req.body.duration) : null;
 
     // Create message record in MongoDB
     const message = await Message.create({
@@ -161,6 +244,10 @@ router.get('/:filename', async (req, res) => {
     const fileSize = stat.size;
     const range = req.headers.range;
 
+    const downloadFilename = (req.query.filename && !req.query.filename.includes('/') && !req.query.filename.includes('\\'))
+      ? req.query.filename
+      : `chat-media.${ext}`;
+
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
@@ -180,7 +267,7 @@ router.get('/:filename', async (req, res) => {
         'Content-Length': chunkSize,
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=3600',
-        ...(req.query.download === 'true' ? { 'Content-Disposition': `attachment; filename="media.${ext}"` } : {}),
+        ...(req.query.download === 'true' ? { 'Content-Disposition': `attachment; filename="${downloadFilename}"` } : {}),
       });
 
       fileStream.pipe(res);
@@ -190,7 +277,7 @@ router.get('/:filename', async (req, res) => {
         'Content-Type': contentType,
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'public, max-age=3600',
-        ...(req.query.download === 'true' ? { 'Content-Disposition': `attachment; filename="media.${ext}"` } : {}),
+        ...(req.query.download === 'true' ? { 'Content-Disposition': `attachment; filename="${downloadFilename}"` } : {}),
       });
 
       fs.createReadStream(filePath).pipe(res);

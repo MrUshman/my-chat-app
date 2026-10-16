@@ -1073,6 +1073,15 @@ body.motion-bubbles::before {
   image-rendering: auto;
 }
 
+.video-player-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 270px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000000;
+}
+
 .chat-inline-video {
   width: 100% !important;
   max-width: 270px !important;
@@ -1082,6 +1091,25 @@ body.motion-bubbles::before {
   background: #000000;
   outline: none;
   cursor: pointer;
+}
+
+.video-duration-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  pointer-events: none;
+  letter-spacing: 0.3px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .video-action-bar {

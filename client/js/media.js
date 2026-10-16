@@ -122,13 +122,13 @@ async function startCamera() {
 
   const isMirror = currentFacingMode === 'user';
 
-  // Tier 1: Ideal HD quality — no minimums (works on all devices)
+  // Tier 1: 720p HD quality (Crisp, smooth 30fps without heavy battery/bandwidth drain)
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: currentFacingMode,
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
+        width: { ideal: 1280, max: 1280 },
+        height: { ideal: 720, max: 720 },
         frameRate: { ideal: 30 },
       },
       audio: false,
@@ -136,19 +136,24 @@ async function startCamera() {
     await attachStream(stream, isMirror);
     return;
   } catch (e1) {
-    console.warn('Camera Tier 1 failed:', e1.name, e1.message);
+    console.warn('Camera Tier 1 (720p) failed:', e1.name, e1.message);
   }
 
-  // Tier 2: Only ask for facingMode — let device pick any resolution
+  // Tier 2: 480p SD fallback (works smoothly on older/budget devices)
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: currentFacingMode },
+      video: {
+        facingMode: currentFacingMode,
+        width: { ideal: 854 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 30 },
+      },
       audio: false,
     });
     await attachStream(stream, isMirror);
     return;
   } catch (e2) {
-    console.warn('Camera Tier 2 failed:', e2.name, e2.message);
+    console.warn('Camera Tier 2 (480p) failed:', e2.name, e2.message);
   }
 
   // Tier 3: Fully unconstrained (any camera, any resolution) — last resort
@@ -330,13 +335,13 @@ async function startVideoRecording() {
     }
   }
 
-  // Pick best supported video MIME type
+  // Pick best supported video MIME type (prioritizing MP4 if native support exists)
   const mimeTypes = [
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm',
-    'video/mp4;codecs=avc1,mp4a.40.2',
-    'video/mp4',
   ];
   let chosenMime = '';
   for (const m of mimeTypes) {
@@ -349,6 +354,8 @@ async function startVideoRecording() {
   videoRecordedChunks = [];
   try {
     const options = chosenMime ? { mimeType: chosenMime } : {};
+    // Optimal 720p HD bitrate: 2.5 Mbps (fast upload, smooth 30fps, no frame drops)
+    options.videoBitsPerSecond = 2500000;
     videoMediaRecorder = new MediaRecorder(cameraStream, options);
   } catch (err) {
     console.error('Cannot create MediaRecorder for video:', err);
@@ -435,17 +442,101 @@ function stopVideoRecording(discard = false) {
   }
 }
 
-function finishVideoRecording(usedMimeType) {
+/**
+ * Injects Duration element into WebM Blob so that video player & downloads
+ * properly display duration (e.g. 0:15) instead of 0 sec / Infinity.
+ */
+async function injectWebmDuration(blob, durationMs) {
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+
+    // Look for Info element [0x15, 0x49, 0xA9, 0x66]
+    let infoPos = -1;
+    for (let i = 0; i < uint8.length - 4; i++) {
+      if (uint8[i] === 0x15 && uint8[i+1] === 0x49 && uint8[i+2] === 0xA9 && uint8[i+3] === 0x66) {
+        infoPos = i;
+        break;
+      }
+    }
+    if (infoPos === -1) return blob;
+
+    // Read Info size (variable length EBML integer)
+    let pos = infoPos + 4;
+    const firstByte = uint8[pos];
+    let numBytes = 1;
+    let mask = 0x80;
+    while ((firstByte & mask) === 0 && numBytes <= 8) {
+      mask >>= 1;
+      numBytes++;
+    }
+
+    let infoSize = firstByte & (mask - 1);
+    for (let i = 1; i < numBytes; i++) {
+      infoSize = (infoSize * 256) + uint8[pos + i];
+    }
+    const infoDataStart = pos + numBytes;
+    const infoDataEnd = infoDataStart + infoSize;
+
+    // Check if Duration (0x4489) already exists in Info
+    for (let i = infoDataStart; i < infoDataEnd - 2; i++) {
+      if (uint8[i] === 0x44 && uint8[i+1] === 0x89) {
+        const floatSize = uint8[i+2];
+        const view = new DataView(arrayBuffer);
+        if (floatSize === 4) {
+          view.setFloat32(i + 3, durationMs, false);
+          return new Blob([arrayBuffer], { type: blob.type });
+        } else if (floatSize === 8) {
+          view.setFloat64(i + 3, durationMs, false);
+          return new Blob([arrayBuffer], { type: blob.type });
+        }
+      }
+    }
+
+    // Duration doesn't exist — inject 0x4489 element into Info
+    const durHeader = new Uint8Array(7);
+    durHeader[0] = 0x44;
+    durHeader[1] = 0x89;
+    durHeader[2] = 0x84; // 4-byte float
+    new DataView(durHeader.buffer).setFloat32(3, durationMs, false);
+
+    const newInfoSize = infoSize + 7;
+    let newInfoLenBytes;
+    if (newInfoSize < 127) {
+      newInfoLenBytes = new Uint8Array([0x80 | newInfoSize]);
+    } else {
+      newInfoLenBytes = new Uint8Array([0x40 | (newInfoSize >> 8), newInfoSize & 0xFF]);
+    }
+
+    const before = arrayBuffer.slice(0, infoPos);
+    const infoId = new Uint8Array([0x15, 0x49, 0xA9, 0x66]);
+    const infoData = arrayBuffer.slice(infoDataStart, infoDataEnd);
+    const after = arrayBuffer.slice(infoDataEnd);
+
+    return new Blob([before, infoId, newInfoLenBytes, infoData, durHeader, after], { type: blob.type });
+  } catch (err) {
+    console.warn('Could not inject WebM duration, using raw blob:', err);
+    return blob;
+  }
+}
+
+async function finishVideoRecording(usedMimeType) {
   if (!videoRecordedChunks || videoRecordedChunks.length === 0) {
     UI.showToast('No video data captured.', 'error');
     return;
   }
 
-  const durationSec = Math.max(1, Math.round((Date.now() - videoRecordingStartTime) / 1000));
+  const durationMs = Math.max(500, Date.now() - videoRecordingStartTime);
+  const durationSec = Math.max(1, Math.round(durationMs / 1000));
   const cleanMime = (usedMimeType || 'video/webm').split(';')[0].trim().toLowerCase();
   const ext = cleanMime.includes('mp4') ? 'mp4' : 'webm';
-  const videoBlob = new Blob(videoRecordedChunks, { type: cleanMime });
+  let videoBlob = new Blob(videoRecordedChunks, { type: cleanMime });
   videoRecordedChunks = [];
+
+  // If WebM, patch the missing duration metadata so players display real duration (not 0 sec)
+  if (cleanMime.includes('webm')) {
+    videoBlob = await injectWebmDuration(videoBlob, durationMs);
+  }
 
   const maxMB = 50;
   if (videoBlob.size > maxMB * 1024 * 1024) {

@@ -224,7 +224,12 @@ let currentVideoFilename = null;
 
 function openVideoModal(url, filename) {
   currentVideoUrl = url;
-  currentVideoFilename = filename || 'chat-video.mp4';
+  const isWebm = (url && url.toLowerCase().includes('.webm')) || (filename && filename.toLowerCase().endsWith('.webm'));
+  const ext = isWebm ? 'webm' : 'mp4';
+  currentVideoFilename = filename || `chat-video.${ext}`;
+  if (!currentVideoFilename.includes('.')) {
+    currentVideoFilename += `.${ext}`;
+  }
   if (videoModalPlayer) {
     videoModalPlayer.src = url;
     videoModalPlayer.currentTime = 0;
@@ -263,7 +268,7 @@ if (videoModalDownload) {
   videoModalDownload.addEventListener('click', () => {
     if (!currentVideoUrl) return;
     const a = document.createElement('a');
-    a.href = currentVideoUrl + '?download=true';
+    a.href = `${currentVideoUrl}?download=true&filename=${encodeURIComponent(currentVideoFilename)}`;
     a.download = currentVideoFilename;
     document.body.appendChild(a);
     a.click();
