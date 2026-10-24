@@ -235,10 +235,27 @@
   }
 
   // ─── Helpers: UI & Modal Visibility ─────────────────────────────────────────
+  function showModal(modal) {
+    if (!modal) return;
+    modal.classList.add('active');
+    modal.style.removeProperty('display');
+  }
+
+  function hideModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.style.removeProperty('display');
+  }
+
   function toggleCallDropdown(show) {
     if (!callChoiceDropdown) return;
-    const shouldShow = typeof show === 'boolean' ? show : callChoiceDropdown.style.display === 'none';
-    callChoiceDropdown.style.display = shouldShow ? 'flex' : 'none';
+    const isShown = callChoiceDropdown.classList.contains('show');
+    const shouldShow = typeof show === 'boolean' ? show : !isShown;
+    if (shouldShow) {
+      callChoiceDropdown.classList.add('show');
+    } else {
+      callChoiceDropdown.classList.remove('show');
+    }
   }
 
   function formatDuration(seconds) {
@@ -413,7 +430,7 @@
 
     // Show Outgoing Modal
     callState = 'calling';
-    if (outgoingCallModal) outgoingCallModal.style.display = 'flex';
+    if (outgoingCallModal) showModal(outgoingCallModal);
     playDialTone();
 
     try {
@@ -487,7 +504,7 @@
         incomingType === 'video' ? '📹 WhatsApp Video Call' : '📞 WhatsApp Voice Call';
     }
 
-    if (incomingCallModal) incomingCallModal.style.display = 'flex';
+    if (incomingCallModal) showModal(incomingCallModal);
     playRingtone();
 
     // Signal caller that phone is ringing
@@ -578,11 +595,11 @@
     if (incomingCallTimeout) clearTimeout(incomingCallTimeout);
 
     // Hide outgoing and incoming modals
-    if (outgoingCallModal) outgoingCallModal.style.display = 'none';
-    if (incomingCallModal) incomingCallModal.style.display = 'none';
+    if (outgoingCallModal) hideModal(outgoingCallModal);
+    if (incomingCallModal) hideModal(incomingCallModal);
 
     // Show Active Call Modal
-    if (activeCallModal) activeCallModal.style.display = 'flex';
+    if (activeCallModal) showModal(activeCallModal);
 
     // Setup active call UI based on type
     const partner = getPartnerInfo();
@@ -761,9 +778,9 @@
     if (remoteVideoPlayer) remoteVideoPlayer.srcObject = null;
     if (remoteAudioPlayer) remoteAudioPlayer.srcObject = null;
 
-    if (outgoingCallModal) outgoingCallModal.style.display = 'none';
-    if (incomingCallModal) incomingCallModal.style.display = 'none';
-    if (activeCallModal) activeCallModal.style.display = 'none';
+    if (outgoingCallModal) hideModal(outgoingCallModal);
+    if (incomingCallModal) hideModal(incomingCallModal);
+    if (activeCallModal) hideModal(activeCallModal);
   }
 
   // ─── Socket Event Listeners ─────────────────────────────────────────────────
@@ -846,6 +863,10 @@
 
   // ─── UI Event Listeners ─────────────────────────────────────────────────────
   function initCallUI() {
+    // Ensure all calling modals and dropdowns are hidden on initial load
+    cleanupCallState();
+    toggleCallDropdown(false);
+
     // 1. WhatsApp Phone Header Button -> Toggle Dropdown
     if (callActionBtn) {
       callActionBtn.addEventListener('click', (e) => {
@@ -856,7 +877,7 @@
 
     // Close dropdown on click outside
     document.addEventListener('click', (e) => {
-      if (callChoiceDropdown && callChoiceDropdown.style.display !== 'none') {
+      if (callChoiceDropdown && callChoiceDropdown.classList.contains('show')) {
         if (!callChoiceDropdown.contains(e.target) && e.target !== callActionBtn) {
           toggleCallDropdown(false);
         }

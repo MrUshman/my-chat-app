@@ -3816,10 +3816,14 @@ body.motion-minimal .chat-messages {
   padding: 8px !important;
   box-shadow: 0 12px 35px rgba(0, 0, 0, 0.65), 0 0 15px rgba(139, 92, 246, 0.25) !important;
   z-index: 10000;
-  display: flex;
+  display: none !important;
   flex-direction: column;
-  animation: callMenuPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   transform-origin: top right;
+}
+
+.call-choice-dropdown.show {
+  display: flex !important;
+  animation: callMenuPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes callMenuPopIn {
@@ -3907,7 +3911,7 @@ body.motion-minimal .chat-messages {
   height: 100dvh !important;
   z-index: 9999999 !important;
   background: #080712 !important;
-  display: flex !important;
+  display: none !important;
   flex-direction: column !important;
   align-items: center !important;
   justify-content: center !important;
@@ -3915,6 +3919,10 @@ body.motion-minimal .chat-messages {
   user-select: none !important;
   -webkit-user-select: none !important;
   touch-action: none !important;
+}
+
+.calling-fullscreen-overlay.active {
+  display: flex !important;
   animation: callOverlayFade 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
