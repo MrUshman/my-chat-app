@@ -52,6 +52,8 @@ function getAuthHeaders(existingHeaders = {}) {
   return existingHeaders;
 }
 window.getAuthHeaders = getAuthHeaders;
+window.getCurrentPartner = () => partner;
+window.getCurrentUser = () => currentUser;
 
 // ─── Instant Cache Hydration (0ms WhatsApp-style Stale-While-Revalidate) ───
 

@@ -409,6 +409,79 @@ function initChatSocket(io) {
       }
     });
 
+    // ─── WebRTC Audio & Video Calling Signaling ─────────────────────────────
+    socket.on('call_user', async (data, ack) => {
+      try {
+        const { callType, offer } = data || {};
+        const otherUser = await User.findOne({ _id: { $ne: user._id } });
+        if (!otherUser) return ack?.({ error: 'Partner not found' });
+        const otherUserId = otherUser._id.toString();
+
+        const isOnline = isUserOnline(otherUserId, io);
+        if (!isOnline) {
+          return ack?.({ error: 'Partner is offline', offline: true });
+        }
+
+        io.to(otherUserId).emit('incoming_call', {
+          callerId: userId,
+          callerName: user.displayName || user.username,
+          callerAvatar: user.profileImage || null,
+          callType: callType || 'audio',
+          offer,
+        });
+
+        ack?.({ success: true, partnerOnline: true });
+      } catch (err) {
+        console.error('call_user socket error:', err.message);
+        ack?.({ error: 'Call signaling failed' });
+      }
+    });
+
+    socket.on('call_ringing', (data) => {
+      const { callerId } = data || {};
+      if (callerId) {
+        io.to(callerId).emit('call_ringing');
+      } else {
+        socket.broadcast.emit('call_ringing');
+      }
+    });
+
+    socket.on('call_accepted', (data) => {
+      const { callerId, answer } = data || {};
+      if (callerId) {
+        io.to(callerId).emit('call_accepted', { answer });
+      } else {
+        socket.broadcast.emit('call_accepted', { answer });
+      }
+    });
+
+    socket.on('call_rejected', (data) => {
+      const { callerId, reason } = data || {};
+      if (callerId) {
+        io.to(callerId).emit('call_rejected', { reason });
+      } else {
+        socket.broadcast.emit('call_rejected', { reason });
+      }
+    });
+
+    socket.on('ice_candidate', (data) => {
+      const { targetUserId, candidate } = data || {};
+      if (targetUserId) {
+        io.to(targetUserId).emit('ice_candidate', { candidate });
+      } else {
+        socket.broadcast.emit('ice_candidate', { candidate });
+      }
+    });
+
+    socket.on('call_ended', (data) => {
+      const { targetUserId, durationSec, callType } = data || {};
+      if (targetUserId) {
+        io.to(targetUserId).emit('call_ended', { durationSec, callType });
+      } else {
+        socket.broadcast.emit('call_ended', { durationSec, callType });
+      }
+    });
+
     // ─── Explicit Client Offline Event (on tab close/hide) ───────────────────
     socket.on('client_offline', async () => {
       unregisterUser(userId, socket.id);

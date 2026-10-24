@@ -3758,4 +3758,567 @@ body.motion-minimal .chat-messages {
   font-family: inherit;
 }
 
+/* ═══════════════════════════════════════════════════════════════════ */
+/* WHATSAPP-STYLE AUDIO & VIDEO CALLING STYLING (WebRTC P2P)          */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+/* Header Call Button */
+.call-action-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px !important;
+}
+
+.btn-header-call {
+  appearance: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  color: #22c55e !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  outline: none !important;
+  padding: 0 !important;
+}
+
+.btn-header-call:hover,
+.btn-header-call:focus {
+  background: rgba(34, 197, 94, 0.2) !important;
+  border-color: #22c55e !important;
+  color: #4ade80 !important;
+  transform: scale(1.05) !important;
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.45) !important;
+}
+
+.btn-header-call:active {
+  transform: scale(0.94) !important;
+}
+
+/* Call Choice Popup Dropdown (WhatsApp Style) */
+.call-choice-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -10px;
+  width: 230px;
+  background: rgba(20, 16, 38, 0.96) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 18px !important;
+  padding: 8px !important;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.65), 0 0 15px rgba(139, 92, 246, 0.25) !important;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  animation: callMenuPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top right;
+}
+
+@keyframes callMenuPopIn {
+  from { opacity: 0; transform: scale(0.88) translateY(-6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.call-choice-item {
+  appearance: none !important;
+  border: none !important;
+  background: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 10px 12px !important;
+  border-radius: 12px !important;
+  cursor: pointer !important;
+  text-align: left !important;
+  width: 100% !important;
+  color: #ffffff !important;
+  transition: all 0.15s ease !important;
+  outline: none !important;
+}
+
+.call-choice-item:hover,
+.call-choice-item:focus {
+  background: rgba(255, 255, 255, 0.12) !important;
+  transform: translateX(2px) !important;
+}
+
+.call-choice-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #ffffff;
+}
+
+.call-choice-icon.voice-icon {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 2px 10px rgba(34, 197, 94, 0.4);
+}
+
+.call-choice-icon.video-icon {
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  box-shadow: 0 2px 10px rgba(139, 92, 246, 0.4);
+}
+
+.call-choice-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.call-choice-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+}
+
+.call-choice-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 1px;
+}
+
+.call-choice-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 4px 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* FULLSCREEN CALLING OVERLAYS (100dvh Mobile-Safe WhatsApp Design)   */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+.calling-fullscreen-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  z-index: 9999999 !important;
+  background: #080712 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  touch-action: none !important;
+  animation: callOverlayFade 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes callOverlayFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.calling-bg-blur {
+  position: absolute;
+  inset: -20px;
+  background: radial-gradient(circle at 50% 30%, rgba(139, 92, 246, 0.35) 0%, rgba(15, 23, 42, 0.95) 70%, #050508 100%);
+  filter: blur(25px);
+  z-index: 1;
+}
+
+.calling-container {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 440px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(40px, env(safe-area-inset-bottom)) 24px;
+}
+
+.calling-top-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.calling-type-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.calling-security-tag {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.calling-avatar-wrapper {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -20px;
+}
+
+.calling-avatar-img {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  z-index: 3;
+}
+
+.calling-pulse-ring {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px solid rgba(139, 92, 246, 0.6);
+  animation: callingPulse 2s ease-out infinite;
+  z-index: 1;
+}
+
+.calling-pulse-ring.ring-2 {
+  animation-delay: 0.8s;
+}
+
+.calling-pulse-ring.incoming-ring {
+  border-color: rgba(34, 197, 94, 0.7);
+}
+
+@keyframes callingPulse {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(1.85); opacity: 0; }
+}
+
+.calling-partner-name {
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffffff;
+  margin-top: 14px;
+  text-align: center;
+  letter-spacing: -0.3px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.calling-status-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: 6px;
+  text-align: center;
+  animation: callStatusBlink 1.8s ease-in-out infinite;
+}
+
+@keyframes callStatusBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.calling-action-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  margin-bottom: 20px;
+}
+
+.calling-action-bar.incoming-actions {
+  justify-content: space-around;
+  padding: 0 20px;
+}
+
+.call-btn-circle {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.45);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.call-btn-circle:active {
+  transform: scale(0.9);
+}
+
+.call-btn-end {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.45) !important;
+}
+
+.call-btn-accept {
+  background: #22c55e !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.45) !important;
+}
+
+.call-btn-accept.pulse-green {
+  animation: acceptPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes acceptPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  50% { transform: scale(1.06); box-shadow: 0 0 0 16px rgba(34, 197, 94, 0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════ */
+/* ACTIVE CONNECTED CALL SCREEN (Video / Audio Mode)                  */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+.active-call-overlay {
+  background: #000000 !important;
+}
+
+/* Video Containers */
+.call-video-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  background: #000000;
+}
+
+.remote-video-player {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000000;
+}
+
+.local-video-wrapper {
+  position: absolute;
+  top: max(20px, env(safe-area-inset-top));
+  right: 18px;
+  width: 105px;
+  height: 150px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.65);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  z-index: 10;
+  background: #111;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.local-video-player {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+/* Audio Voice Mode Container */
+.call-audio-container {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  margin-top: -60px;
+}
+
+.active-audio-avatar {
+  width: 140px;
+  height: 140px;
+}
+
+.active-audio-avatar .calling-avatar-img {
+  width: 130px;
+  height: 130px;
+}
+
+/* Animated Audio Wave Bars */
+.audio-visualizer-bars {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  margin-top: 24px;
+}
+
+.audio-visualizer-bars .bar {
+  width: 4px;
+  height: 8px;
+  background: #22c55e;
+  border-radius: 3px;
+  animation: waveBar 1.2s ease-in-out infinite;
+}
+
+.audio-visualizer-bars .bar-1 { animation-delay: 0.1s; }
+.audio-visualizer-bars .bar-2 { animation-delay: 0.3s; }
+.audio-visualizer-bars .bar-3 { animation-delay: 0.5s; }
+.audio-visualizer-bars .bar-4 { animation-delay: 0.2s; }
+.audio-visualizer-bars .bar-5 { animation-delay: 0.4s; }
+
+@keyframes waveBar {
+  0%, 100% { height: 6px; }
+  50% { height: 26px; }
+}
+
+/* Active Call Topbar */
+.active-call-topbar {
+  position: absolute;
+  top: max(20px, env(safe-area-inset-top));
+  left: 20px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.active-call-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.call-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+
+.call-timer-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.call-security-pill {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: 4px;
+}
+
+/* In-Call Floating Control Pill Bar */
+.active-call-controls-bar {
+  position: absolute;
+  bottom: max(32px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 10px 22px;
+  border-radius: 40px;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+.call-control-btn {
+  appearance: none;
+  border: none;
+  outline: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.call-control-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+
+.call-control-btn:active {
+  transform: scale(0.92);
+}
+
+.call-control-btn.active-off {
+  background: rgba(239, 68, 68, 0.25) !important;
+  color: #ef4444 !important;
+  border: 1.5px solid rgba(239, 68, 68, 0.6) !important;
+}
+
+.call-control-btn.call-btn-end {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  width: 54px !important;
+  height: 54px !important;
+  box-shadow: 0 4px 18px rgba(239, 68, 68, 0.5) !important;
+}
+
+.call-control-btn.call-btn-end:hover {
+  background: #dc2626 !important;
+  transform: scale(1.06) !important;
+}
+
+.control-btn-label {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .active-call-controls-bar {
+    gap: 12px;
+    padding: 8px 16px;
+  }
+  .call-control-btn {
+    width: 48px;
+    height: 48px;
+  }
+  .local-video-wrapper {
+    width: 88px;
+    height: 125px;
+  }
+}
+
 

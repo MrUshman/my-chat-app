@@ -405,4 +405,8 @@ window.ChatSocket = {
   emitThemeUpdate,
   requestPartnerStatus,
   get connected() { return socket?.connected || false; },
+  get rawSocket() { return socket; },
+  on(event, fn) { if (socket) socket.on(event, fn); },
+  off(event, fn) { if (socket) socket.off(event, fn); },
+  emit(event, data, ack) { if (socket) socket.emit(event, data, ack); },
 };
