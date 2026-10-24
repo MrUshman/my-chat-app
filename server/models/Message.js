@@ -21,11 +21,28 @@ const messageSchema = new mongoose.Schema(
     // Message type
     type: {
       type: String,
-      enum: ['text', 'image', 'audio', 'video'],
+      enum: ['text', 'image', 'audio', 'video', 'call'],
       required: true,
       default: 'text',
     },
-    // Text content (for type='text')
+    // Call record metadata (for type='call')
+    callInfo: {
+      callType: {
+        type: String,
+        enum: ['audio', 'video'],
+        default: 'audio',
+      },
+      status: {
+        type: String,
+        enum: ['completed', 'missed', 'declined', 'cancelled'],
+        default: 'completed',
+      },
+      duration: {
+        type: Number,
+        default: 0,
+      },
+    },
+    // Text content (for type='text' or call label)
     text: {
       type: String,
       default: null,

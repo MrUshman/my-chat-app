@@ -4329,4 +4329,130 @@ body.motion-minimal .chat-messages {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════ */
+/* WHATSAPP-STYLE CALL LOG BUBBLE IN CHAT TIMELINE                     */
+/* ═══════════════════════════════════════════════════════════════════ */
+
+.call-log-bubble {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
+  border-radius: 18px !important;
+  cursor: pointer !important;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  min-width: 220px !important;
+  max-width: 300px !important;
+}
+
+.call-log-bubble:active {
+  transform: scale(0.97) !important;
+}
+
+/* Bubble background & border for sender vs receiver */
+.message-wrapper.me .call-log-bubble {
+  background: rgba(139, 92, 246, 0.22) !important;
+  border: 1px solid rgba(139, 92, 246, 0.38) !important;
+}
+
+.message-wrapper.them .call-log-bubble {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+}
+
+.call-log-bubble.is-missed {
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+.call-log-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.call-icon-completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.call-icon-missed {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.call-log-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.call-log-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.call-direction-arrow {
+  flex-shrink: 0;
+}
+
+.call-log-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.2px;
+}
+
+.call-log-bubble.is-missed .call-log-title {
+  color: #f87171;
+}
+
+.call-log-sub {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.call-log-action-btn {
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.call-log-action-btn:hover {
+  background: rgba(34, 197, 94, 0.25);
+  color: #22c55e;
+  transform: scale(1.1);
+}
+
+.call-log-action-btn:active {
+  transform: scale(0.9);
+}
+
+
 

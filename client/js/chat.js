@@ -587,6 +587,71 @@ function renderMessage(msg, position = 'append', container = null) {
           </a>
         </div>`;
     }
+  } else if (msg.type === 'call') {
+    const callInfo = msg.callInfo || {};
+    const callType = callInfo.callType || (msg.text?.toLowerCase().includes('video') ? 'video' : 'audio');
+    const status = callInfo.status || (msg.text?.toLowerCase().includes('missed') ? 'missed' : 'completed');
+    const isMissed = status === 'missed' || status === 'declined' || status === 'cancelled';
+    const duration = msg.duration || callInfo.duration || 0;
+
+    function formatCallDur(sec) {
+      if (!sec || isNaN(sec) || sec <= 0) return '0 sec';
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      if (m > 0 && s > 0) return `${m}m ${s}s`;
+      if (m > 0) return `${m} min`;
+      return `${s} sec`;
+    }
+
+    let title = '';
+    let subtitle = '';
+
+    if (isMe) {
+      if (isMissed) {
+        title = callType === 'video' ? 'Cancelled video call' : 'Cancelled voice call';
+        subtitle = 'Tap to call again';
+      } else {
+        title = callType === 'video' ? 'Video call' : 'Voice call';
+        subtitle = duration > 0 ? formatCallDur(duration) : 'Ended';
+      }
+    } else {
+      if (isMissed) {
+        title = callType === 'video' ? 'Missed video call' : 'Missed voice call';
+        subtitle = 'Tap to call back';
+      } else {
+        title = callType === 'video' ? 'Video call' : 'Voice call';
+        subtitle = duration > 0 ? formatCallDur(duration) : 'Ended';
+      }
+    }
+
+    const isVideo = callType === 'video';
+    const iconColorClass = isMissed ? 'call-icon-missed' : 'call-icon-completed';
+
+    const phoneIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>`;
+    const videoIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>`;
+
+    const arrowIcon = isMissed
+      ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="call-direction-arrow"><line x1="7" y1="7" x2="17" y2="17"></line><polyline points="17 7 17 17 7 17"></polyline></svg>`
+      : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="call-direction-arrow"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>`;
+
+    const callFn = isVideo ? 'window.CallManager?.startVideoCall()' : 'window.CallManager?.startVoiceCall()';
+
+    bubbleContent = `
+      <div class="message-bubble call-log-bubble ${isMissed ? 'is-missed' : ''}" onclick="${callFn}" role="button" tabindex="0" title="Tap to call">
+        <div class="call-log-badge ${iconColorClass}">
+          ${isVideo ? videoIcon : phoneIcon}
+        </div>
+        <div class="call-log-info">
+          <div class="call-log-header">
+            ${arrowIcon}
+            <span class="call-log-title">${escapeHtml(title)}</span>
+          </div>
+          <div class="call-log-sub">${escapeHtml(subtitle)}</div>
+        </div>
+        <button type="button" class="call-log-action-btn" aria-label="Call again" onclick="event.stopPropagation(); ${callFn}">
+          ${isVideo ? videoIcon : phoneIcon}
+        </button>
+      </div>`;
   }
 
   // Status icon (only for my messages)
@@ -1032,6 +1097,9 @@ async function showNotificationIfHidden(msg) {
     bodyText = '🎥 Video';
   } else if (msg.type === 'audio') {
     bodyText = '🎙️ Voice message';
+  } else if (msg.type === 'call') {
+    const isMissed = msg.callInfo?.status === 'missed' || msg.callInfo?.status === 'declined' || msg.text?.includes('Missed');
+    bodyText = isMissed ? '📞 Missed call' : '📞 Call';
   }
 
   const title = `${senderName} ❤️`;

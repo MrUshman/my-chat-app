@@ -11,6 +11,82 @@ const User = require('../models/User');
 // Track online users: Map<userIdString, Set<socketId>>
 const onlineUsers = new Map();
 
+// Active Call Sessions: Map<callKey, { callerId, calleeId, callType, startedAt, connected, connectedAt, logged }>
+const activeCallSessions = new Map();
+
+function getCallKey(id1, id2) {
+  if (!id1 || !id2) return '';
+  return [id1.toString(), id2.toString()].sort().join('_');
+}
+
+async function recordCallMessage(io, session, customStatus = null, durationOverride = null) {
+  if (!session || session.logged) return;
+  session.logged = true;
+
+  try {
+    const callerId = session.callerId;
+    const calleeId = session.calleeId;
+    const callType = session.callType || 'audio';
+    let duration = typeof durationOverride === 'number' ? durationOverride : 0;
+
+    let status = customStatus;
+    if (!status) {
+      if (session.connected) {
+        status = 'completed';
+        if (session.connectedAt && duration === 0) {
+          duration = Math.max(1, Math.round((Date.now() - session.connectedAt.getTime()) / 1000));
+        }
+      } else {
+        status = 'missed';
+      }
+    }
+
+    // Build human-readable text
+    let text = '';
+    if (status === 'completed') {
+      text = callType === 'video' ? 'Video call' : 'Voice call';
+    } else if (status === 'declined') {
+      text = callType === 'video' ? 'Declined video call' : 'Declined voice call';
+    } else {
+      text = callType === 'video' ? 'Missed video call' : 'Missed voice call';
+    }
+
+    const otherOnline = isUserOnline(calleeId, io);
+    const now = new Date();
+
+    const callMsg = await Message.create({
+      senderId: callerId,
+      receiverId: calleeId,
+      type: 'call',
+      text,
+      duration,
+      callInfo: {
+        callType,
+        status,
+        duration,
+      },
+      deliveredAt: otherOnline ? now : null,
+    });
+
+    await callMsg.populate('senderId', 'username displayName');
+    await callMsg.populate('receiverId', 'username displayName');
+
+    const msgObj = callMsg.toObject();
+
+    io.to(callerId).emit('receive_message', msgObj);
+    io.to(calleeId).emit('receive_message', msgObj);
+
+    if (otherOnline) {
+      io.to(callerId).emit('message_delivered', {
+        messageId: callMsg._id.toString(),
+        deliveredAt: now,
+      });
+    }
+  } catch (err) {
+    console.error('recordCallMessage error:', err.message);
+  }
+}
+
 function registerUser(userId, socketId) {
   const uid = userId ? userId.toString() : '';
   if (!uid) return;
@@ -422,6 +498,17 @@ function initChatSocket(io) {
           return ack?.({ error: 'Partner is offline', offline: true });
         }
 
+        const callKey = getCallKey(userId, otherUserId);
+        activeCallSessions.set(callKey, {
+          callerId: userId,
+          calleeId: otherUserId,
+          callType: callType || 'audio',
+          startedAt: new Date(),
+          connected: false,
+          connectedAt: null,
+          logged: false,
+        });
+
         io.to(otherUserId).emit('incoming_call', {
           callerId: userId,
           callerName: user.displayName || user.username,
@@ -448,6 +535,13 @@ function initChatSocket(io) {
 
     socket.on('call_accepted', (data) => {
       const { callerId, answer } = data || {};
+      const callKey = getCallKey(userId, callerId);
+      const session = activeCallSessions.get(callKey);
+      if (session) {
+        session.connected = true;
+        session.connectedAt = new Date();
+      }
+
       if (callerId) {
         io.to(callerId).emit('call_accepted', { answer });
       } else {
@@ -457,6 +551,14 @@ function initChatSocket(io) {
 
     socket.on('call_rejected', (data) => {
       const { callerId, reason } = data || {};
+      const callKey = getCallKey(userId, callerId);
+      const session = activeCallSessions.get(callKey);
+      if (session) {
+        const status = reason === 'declined' ? 'declined' : 'missed';
+        recordCallMessage(io, session, status, 0);
+        activeCallSessions.delete(callKey);
+      }
+
       if (callerId) {
         io.to(callerId).emit('call_rejected', { reason });
       } else {
@@ -473,8 +575,25 @@ function initChatSocket(io) {
       }
     });
 
-    socket.on('call_ended', (data) => {
+    socket.on('call_ended', async (data) => {
       const { targetUserId, durationSec, callType } = data || {};
+      let otherId = targetUserId;
+      if (!otherId) {
+        const otherUser = await User.findOne({ _id: { $ne: user._id } });
+        if (otherUser) otherId = otherUser._id.toString();
+      }
+
+      if (otherId) {
+        const callKey = getCallKey(userId, otherId);
+        const session = activeCallSessions.get(callKey);
+        if (session) {
+          const dur = typeof durationSec === 'number' ? durationSec : 0;
+          const status = session.connected ? 'completed' : 'missed';
+          recordCallMessage(io, session, status, dur);
+          activeCallSessions.delete(callKey);
+        }
+      }
+
       if (targetUserId) {
         io.to(targetUserId).emit('call_ended', { durationSec, callType });
       } else {
@@ -500,6 +619,14 @@ function initChatSocket(io) {
       console.log(`🔌 ${user.displayName} disconnected [${socket.id}] Reason: ${reason}`);
 
       unregisterUser(userId, socket.id);
+
+      // Record any unclosed call session involving this user
+      for (const [key, session] of activeCallSessions.entries()) {
+        if (session.callerId === userId || session.calleeId === userId) {
+          recordCallMessage(io, session);
+          activeCallSessions.delete(key);
+        }
+      }
 
       // Only broadcast offline if user has no more active live sockets
       if (!isUserOnline(userId, io, socket.id)) {
