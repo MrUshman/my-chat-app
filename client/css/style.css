@@ -4133,12 +4133,31 @@ body.motion-minimal .chat-messages {
   height: 150px;
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.65);
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  z-index: 10;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 12px rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  z-index: 25;
   background: #111;
-  cursor: pointer;
-  transition: transform 0.2s ease;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.local-video-wrapper:active,
+.local-video-wrapper.is-dragging {
+  cursor: grabbing;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.9), 0 0 20px rgba(139, 92, 246, 0.5);
+  border-color: rgba(139, 92, 246, 0.7);
+  transform: scale(1.04);
+  transition: transform 0.15s ease !important;
+}
+
+.local-video-wrapper.is-snapping {
+  transition: top 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              left 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              right 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              bottom 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.32s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .local-video-player {
@@ -4208,6 +4227,7 @@ body.motion-minimal .chat-messages {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .active-call-badge {
@@ -4261,6 +4281,20 @@ body.motion-minimal .chat-messages {
   border-radius: 40px;
   border: 1.5px solid rgba(255, 255, 255, 0.18);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* WhatsApp Immersion: Tap screen to toggle controls & topbar */
+.active-call-overlay.controls-hidden .active-call-topbar {
+  opacity: 0 !important;
+  transform: translateY(-30px) !important;
+  pointer-events: none !important;
+}
+
+.active-call-overlay.controls-hidden .active-call-controls-bar {
+  opacity: 0 !important;
+  transform: translate(-50%, 65px) !important;
+  pointer-events: none !important;
 }
 
 .call-control-btn {

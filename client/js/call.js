@@ -196,6 +196,7 @@
   const callAudioContainer = document.getElementById('callAudioContainer');
   const remoteVideoPlayer = document.getElementById('remoteVideoPlayer');
   const localVideoPlayer = document.getElementById('localVideoPlayer');
+  const localVideoWrapper = document.getElementById('localVideoWrapper');
   const remoteAudioPlayer = document.getElementById('remoteAudioPlayer');
   const activeCallPartnerAvatar = document.getElementById('activeCallPartnerAvatar');
   const activeCallPartnerName = document.getElementById('activeCallPartnerName');
@@ -599,7 +600,11 @@
     if (incomingCallModal) hideModal(incomingCallModal);
 
     // Show Active Call Modal
-    if (activeCallModal) showModal(activeCallModal);
+    if (activeCallModal) {
+      showModal(activeCallModal);
+      activeCallModal.classList.remove('controls-hidden');
+    }
+    resetPipPosition();
 
     // Setup active call UI based on type
     const partner = getPartnerInfo();
@@ -780,7 +785,151 @@
 
     if (outgoingCallModal) hideModal(outgoingCallModal);
     if (incomingCallModal) hideModal(incomingCallModal);
-    if (activeCallModal) hideModal(activeCallModal);
+    if (activeCallModal) {
+      hideModal(activeCallModal);
+      activeCallModal.classList.remove('controls-hidden');
+    }
+    resetPipPosition();
+  }
+
+  // ─── WhatsApp Draggable PiP (Picture-in-Picture) Local Video ───────────────
+  let pipStartX = 0;
+  let pipStartY = 0;
+  let pipInitialLeft = 0;
+  let pipInitialTop = 0;
+  let isDraggingPip = false;
+  let pipMovedDistance = 0;
+
+  function initDraggablePip() {
+    if (!localVideoWrapper) return;
+
+    localVideoWrapper.addEventListener('pointerdown', (e) => {
+      if (e.button && e.button !== 0) return;
+
+      isDraggingPip = true;
+      pipMovedDistance = 0;
+      pipStartX = e.clientX;
+      pipStartY = e.clientY;
+
+      const rect = localVideoWrapper.getBoundingClientRect();
+      pipInitialLeft = rect.left;
+      pipInitialTop = rect.top;
+
+      try {
+        localVideoWrapper.setPointerCapture(e.pointerId);
+      } catch (err) {}
+
+      localVideoWrapper.classList.remove('is-snapping');
+      localVideoWrapper.classList.add('is-dragging');
+    });
+
+    localVideoWrapper.addEventListener('pointermove', (e) => {
+      if (!isDraggingPip) return;
+
+      const deltaX = e.clientX - pipStartX;
+      const deltaY = e.clientY - pipStartY;
+      pipMovedDistance = Math.hypot(deltaX, deltaY);
+
+      let newLeft = pipInitialLeft + deltaX;
+      let newTop = pipInitialTop + deltaY;
+
+      // Clamping within window boundaries
+      const maxLeft = window.innerWidth - localVideoWrapper.offsetWidth - 10;
+      const maxTop = window.innerHeight - localVideoWrapper.offsetHeight - 10;
+      newLeft = Math.max(10, Math.min(newLeft, maxLeft));
+      newTop = Math.max(10, Math.min(newTop, maxTop));
+
+      localVideoWrapper.style.left = `${newLeft}px`;
+      localVideoWrapper.style.top = `${newTop}px`;
+      localVideoWrapper.style.right = 'auto';
+      localVideoWrapper.style.bottom = 'auto';
+    });
+
+    const handlePointerEnd = (e) => {
+      if (!isDraggingPip) return;
+      isDraggingPip = false;
+
+      try {
+        localVideoWrapper.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+
+      localVideoWrapper.classList.remove('is-dragging');
+
+      if (pipMovedDistance > 8) {
+        snapPipToNearestCorner();
+      }
+
+      // Reset distance after short delay so screen click handler knows it was a drag
+      setTimeout(() => {
+        pipMovedDistance = 0;
+      }, 160);
+    };
+
+    localVideoWrapper.addEventListener('pointerup', handlePointerEnd);
+    localVideoWrapper.addEventListener('pointercancel', handlePointerEnd);
+  }
+
+  function snapPipToNearestCorner() {
+    if (!localVideoWrapper) return;
+    localVideoWrapper.classList.add('is-snapping');
+
+    const rect = localVideoWrapper.getBoundingClientRect();
+    const pipW = localVideoWrapper.offsetWidth;
+    const pipH = localVideoWrapper.offsetHeight;
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+
+    // Determine nearest horizontal edge (Left vs Right)
+    const centerX = rect.left + pipW / 2;
+    const snapLeft = centerX < winW / 2 ? 14 : winW - pipW - 14;
+
+    // Clamp vertical position
+    let snapTop = rect.top;
+    const padTop = 20;
+    const padBottom = 95;
+    if (snapTop < padTop) {
+      snapTop = padTop;
+    } else if (snapTop > winH - pipH - padBottom) {
+      snapTop = winH - pipH - padBottom;
+    }
+
+    localVideoWrapper.style.left = `${snapLeft}px`;
+    localVideoWrapper.style.top = `${snapTop}px`;
+    localVideoWrapper.style.right = 'auto';
+    localVideoWrapper.style.bottom = 'auto';
+
+    setTimeout(() => {
+      if (localVideoWrapper) {
+        localVideoWrapper.classList.remove('is-snapping');
+      }
+    }, 340);
+  }
+
+  function resetPipPosition() {
+    if (!localVideoWrapper) return;
+    localVideoWrapper.classList.remove('is-dragging', 'is-snapping');
+    localVideoWrapper.style.left = '';
+    localVideoWrapper.style.top = '';
+    localVideoWrapper.style.right = '';
+    localVideoWrapper.style.bottom = '';
+  }
+
+  // ─── WhatsApp Immersion: Tap screen to toggle controls & topbar ───────────
+  function initScreenTapControlsToggle() {
+    if (!activeCallModal) return;
+
+    activeCallModal.addEventListener('click', (e) => {
+      if (callState !== 'connected') return;
+
+      // Ignore if clicking on control buttons
+      if (e.target.closest('.active-call-controls-bar')) return;
+
+      // Ignore if clicking or dragging the local video PiP
+      if (e.target.closest('#localVideoWrapper') || pipMovedDistance > 8) return;
+
+      // Toggle immersion mode
+      activeCallModal.classList.toggle('controls-hidden');
+    });
   }
 
   // ─── Socket Event Listeners ─────────────────────────────────────────────────
@@ -964,6 +1113,10 @@
         endCall(true);
       }
     });
+
+    // Initialize Draggable PiP & Screen Tap Immersion
+    initDraggablePip();
+    initScreenTapControlsToggle();
 
     // Initialize socket events
     registerSocketEvents();
