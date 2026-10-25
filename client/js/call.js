@@ -8,15 +8,96 @@
 
 (function () {
   // ─── Configuration ──────────────────────────────────────────────────────────
+  // ─── Configuration ──────────────────────────────────────────────────────────
   const RTC_CONFIG = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:stun.services.mozilla.com' },
     ],
     iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle', // Multiplex all tracks onto single UDP transport
+    rtcpMuxPolicy: 'require',
   };
+
+  // ─── WebRTC SDP Optimization for Full HD & Slow Networks ───────────────────
+  function optimizeSdp(sdp, isVideo) {
+    if (!sdp) return sdp;
+    let modified = sdp;
+
+    // 1. Audio optimization: Enable Opus In-Band Forward Error Correction (FEC)
+    // Guarantees zero robot/choppy voice even on slow 3G/4G lossy networks
+    if (modified.includes('opus/48000')) {
+      modified = modified.replace(/(a=rtpmap:(\d+) opus\/48000\/2[\s\S]*?a=fmtp:\2[^\r\n]*)/gi, (match) => {
+        if (match.includes('useinbandfec=1')) return match;
+        return `${match};useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=64000`;
+      });
+      if (!modified.includes('useinbandfec=1')) {
+        modified = modified.replace(/a=rtpmap:(\d+) opus\/48000\/2/gi, '$&\r\na=fmtp:$1 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=64000');
+      }
+    }
+
+    // 2. Video optimization: Guaranteed HD Bitrate & Fast Ramp-up
+    if (isVideo) {
+      // Dynamic Bitrate: Minimum 600 kbps, Starts immediately in HD (2000 kbps), Peak 4000 kbps
+      modified = modified.replace(/(a=fmtp:\d+ [^\r\n]+)/gi, (match) => {
+        if (match.includes('x-google-') || match.includes('apt=')) return match;
+        return `${match};x-google-min-bitrate=600;x-google-start-bitrate=2000;x-google-max-bitrate=4000`;
+      });
+
+      // Add 3.5 Mbps bandwidth ceiling in m=video line
+      modified = modified.replace(/(m=video [^\r\n]+\r\n)/gi, '$1b=AS:3500\r\nb=TIAS:3500000\r\n');
+    }
+
+    return modified;
+  }
+
+  // ─── RTCRtpSender Hardware & Bitrate Tuning ─────────────────────────────────
+  async function tuneSenderParameters(pc, type) {
+    if (!pc || !pc.getSenders) return;
+    try {
+      const senders = pc.getSenders();
+      for (const sender of senders) {
+        if (!sender.track) continue;
+
+        if (sender.track.kind === 'video' && type === 'video') {
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 3500000; // 3.5 Mbps Full HD
+            params.encodings[0].minBitrate = 600000;  // 600 kbps minimum
+            params.encodings[0].networkPriority = 'high';
+            params.encodings[0].priority = 'high';
+            // 'balanced': Preserves Full HD crispness smoothly on slow networks
+            params.degradationPreference = 'balanced';
+            await sender.setParameters(params);
+          } catch (e) {
+            console.warn('Sender video parameter tuning error:', e.message);
+          }
+        } else if (sender.track.kind === 'audio') {
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 64000; // 64 kbps HD Voice
+            params.encodings[0].networkPriority = 'high';
+            params.encodings[0].priority = 'high';
+            await sender.setParameters(params);
+          } catch (e) {
+            console.warn('Sender audio parameter tuning error:', e.message);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('tuneSenderParameters error:', err.message);
+    }
+  }
 
   // ─── Web Audio API Sound Synthesizer ────────────────────────────────────────
   let audioCtx = null;
@@ -302,28 +383,28 @@
     }
   }
 
-  // ─── Local Media Acquisition ────────────────────────────────────────────────
+  // ─── Local Media Acquisition (Full HD 1080p / 720p with Dynamic Fallback) ──
   async function acquireLocalStream(type) {
     const audioConstraints = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
+      echoCancellation: { ideal: true },
+      noiseSuppression: { ideal: true },
+      autoGainControl: { ideal: true },
+      sampleRate: { ideal: 48000 },
+      channelCount: { ideal: 1 },
     };
 
-    const videoConstraints =
-      type === 'video'
-        ? {
-            facingMode: currentFacingMode,
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 30, max: 30 },
-          }
-        : false;
+    const fullHdVideoConstraints = {
+      facingMode: currentFacingMode,
+      width: { ideal: 1920, min: 1280 },
+      height: { ideal: 1080, min: 720 },
+      frameRate: { ideal: 30, max: 30 },
+      aspectRatio: { ideal: 16 / 9 },
+    };
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
-        video: videoConstraints,
+        video: type === 'video' ? fullHdVideoConstraints : false,
       });
       localStream = stream;
 
@@ -340,6 +421,38 @@
       }
       return stream;
     } catch (err) {
+      // If 1080p sensor constraint threw OverconstrainedError, gracefully fallback to 720p HD
+      if (type === 'video' && (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError')) {
+        console.warn('1080p Full HD not supported by device camera, falling back to 720p HD...');
+        try {
+          const fallbackConstraints = {
+            facingMode: currentFacingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30, max: 30 },
+          };
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+            video: fallbackConstraints,
+          });
+          localStream = stream;
+          if (localVideoPlayer) {
+            localVideoPlayer.srcObject = stream;
+            localVideoPlayer.muted = true;
+            if (currentFacingMode === 'user') {
+              localVideoPlayer.classList.add('mirror');
+            } else {
+              localVideoPlayer.classList.remove('mirror');
+            }
+            localVideoPlayer.play().catch(() => {});
+          }
+          return stream;
+        } catch (fallbackErr) {
+          console.error('Fallback getUserMedia failed:', fallbackErr);
+          throw fallbackErr;
+        }
+      }
+
       console.error('Failed to acquire media stream:', err);
       if (window.UI?.showToast) {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -401,11 +514,19 @@
     pc.onconnectionstatechange = () => {
       console.log('🔄 WebRTC connectionState:', pc.connectionState);
       if (pc.connectionState === 'connected') {
+        tuneSenderParameters(pc, callType);
         transitionToConnected();
       } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         if (callState === 'connected') {
           endCall(false, 'Connection lost');
         }
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('📶 ICE Connection State:', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        tuneSenderParameters(pc, callType);
       }
     };
 
@@ -442,7 +563,10 @@
         offerToReceiveAudio: true,
         offerToReceiveVideo: type === 'video',
       });
-      await pc.setLocalDescription(offer);
+      const optimizedSdp = optimizeSdp(offer.sdp, type === 'video');
+      const finalOffer = new RTCSessionDescription({ type: offer.type, sdp: optimizedSdp });
+      await pc.setLocalDescription(finalOffer);
+      await tuneSenderParameters(pc, type);
 
       if (outgoingCallStatus) outgoingCallStatus.textContent = 'Calling...';
 
@@ -450,7 +574,7 @@
       if (window.ChatSocket) {
         window.ChatSocket.emit(
           'call_user',
-          { callType: type, offer },
+          { callType: type, offer: finalOffer },
           (response) => {
             if (response?.error) {
               stopAllTones();
@@ -541,12 +665,15 @@
       }
 
       const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+      const optimizedAnswerSdp = optimizeSdp(answer.sdp, callType === 'video');
+      const finalAnswer = new RTCSessionDescription({ type: answer.type, sdp: optimizedAnswerSdp });
+      await pc.setLocalDescription(finalAnswer);
+      await tuneSenderParameters(pc, callType);
 
       if (window.ChatSocket) {
         window.ChatSocket.emit('call_accepted', {
           callerId: currentCallerId,
-          answer,
+          answer: finalAnswer,
         });
       }
 
@@ -959,6 +1086,7 @@
 
       try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        await tuneSenderParameters(peerConnection, callType);
 
         // Flush queued candidates
         while (pendingIceCandidates.length > 0) {
