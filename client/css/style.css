@@ -4336,10 +4336,17 @@ body.motion-minimal .chat-messages {
   transform: scale(0.92);
 }
 
-.call-control-btn.active-off {
-  background: rgba(239, 68, 68, 0.25) !important;
+.call-control-btn.active-off,
+.call-control-btn.btn-muted {
+  background: rgba(239, 68, 68, 0.28) !important;
   color: #ef4444 !important;
   border: 1.5px solid rgba(239, 68, 68, 0.6) !important;
+}
+
+.call-control-btn.speaker-on {
+  background: #25d366 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 16px rgba(37, 211, 102, 0.45) !important;
 }
 
 .call-control-btn.call-btn-end {
