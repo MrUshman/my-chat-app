@@ -551,6 +551,23 @@
       </div>
     </div>
 
+    <!-- WhatsApp-Style Ongoing Call Top Banner (Visible when call is minimized to chat) -->
+    <div id="ongoingCallBanner" class="ongoing-call-banner" style="display:none;" role="button" tabindex="0" title="Tap to return to call">
+      <div class="ongoing-banner-left">
+        <span class="ongoing-call-pulse-dot"></span>
+        <span class="ongoing-call-icon" id="ongoingBannerIcon">📞</span>
+        <div class="ongoing-call-text-group">
+          <span class="ongoing-call-heading">Tap to return to call</span>
+          <span class="ongoing-call-meta" id="ongoingBannerMeta">Partner • 00:00</span>
+        </div>
+      </div>
+      <button type="button" class="ongoing-banner-end-btn" id="ongoingBannerEndBtn" title="End Call" aria-label="End Call">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.99.99 0 0 1 0-1.41C3.28 8.91 7.42 7.25 12 7.25s8.72 1.66 11.71 4.42c.39.39.39 1.02 0 1.41l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+        </svg>
+      </button>
+    </div>
+
     <!-- Header -->
     <header class="chat-header" id="chatHeader">
       <div class="header-left" id="headerProfileTrigger" role="button" tabindex="0" title="View Partner Profile" aria-label="View Partner Profile">
@@ -1413,8 +1430,13 @@
       </div>
     </div>
 
-    <!-- Top Bar: Timer & Status -->
+    <!-- Top Bar: Back/Minimize, Timer & Status -->
     <div class="active-call-topbar">
+      <button type="button" class="call-topbar-btn call-minimize-btn" id="callMinimizeBtn" title="Back to chat (Call will keep running)" aria-label="Minimize Call">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
       <div class="active-call-badge">
         <span class="call-live-dot"></span>
         <span id="callDurationTimer" class="call-timer-text">00:00</span>
@@ -1492,6 +1514,23 @@
     </div>
   </div>
 
+  <!-- Floating Draggable Minimized Video PiP (WhatsApp Style) -->
+  <div id="floatingCallPip" class="floating-call-pip" style="display:none;" role="button" tabindex="0" title="Tap to expand call">
+    <video id="floatingPipVideo" class="floating-pip-video" playsinline autoplay muted></video>
+    <div class="floating-pip-badge">
+      <span class="floating-pip-dot"></span>
+      <span id="floatingPipTimer" class="floating-pip-timer">00:00</span>
+    </div>
+    <div class="floating-pip-expand-hint">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <polyline points="9 21 3 21 3 15"></polyline>
+        <line x1="21" y1="3" x2="14" y2="10"></line>
+        <line x1="3" y1="21" x2="10" y2="14"></line>
+      </svg>
+    </div>
+  </div>
+
   <!-- Desktop Right-Click Context Menu -->
   <div id="msgContextMenu" class="msg-context-menu" style="display:none;" role="menu">
     <button type="button" class="context-item" id="ctxReplyBtn">
@@ -1514,11 +1553,11 @@
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=24.0"></script>
-  <script src="/js/emoji.js?v=24.0"></script>
-  <script src="/js/media.js?v=24.0"></script>
-  <script src="/js/socket.js?v=24.0"></script>
-  <script src="/js/call.js?v=24.0"></script>
-  <script src="/js/chat.js?v=24.0"></script>
+  <script src="/js/ui.js?v=25.0"></script>
+  <script src="/js/emoji.js?v=25.0"></script>
+  <script src="/js/media.js?v=25.0"></script>
+  <script src="/js/socket.js?v=25.0"></script>
+  <script src="/js/call.js?v=25.0"></script>
+  <script src="/js/chat.js?v=25.0"></script>
 </body>
 </html>

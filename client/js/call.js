@@ -288,8 +288,21 @@
     bgKeepAliveAudio.src = SILENT_WAV_BASE64;
   }
 
-  // Active call controls
+  // Active call controls & Minimization
   let isSpeakerMode = true; // WhatsApp style speaker mode (defaults to loudspeaker)
+  let isCallMinimized = false;
+  let isVideoSwapped = false; // WhatsApp tap-to-swap: false = remote fullscreen / local pip; true = local fullscreen / remote pip
+
+  const callMinimizeBtn = document.getElementById('callMinimizeBtn');
+  const ongoingCallBanner = document.getElementById('ongoingCallBanner');
+  const ongoingBannerIcon = document.getElementById('ongoingBannerIcon');
+  const ongoingBannerMeta = document.getElementById('ongoingBannerMeta');
+  const ongoingBannerEndBtn = document.getElementById('ongoingBannerEndBtn');
+
+  const floatingCallPip = document.getElementById('floatingCallPip');
+  const floatingPipVideo = document.getElementById('floatingPipVideo');
+  const floatingPipTimer = document.getElementById('floatingPipTimer');
+
   const callToggleSpeakerBtn = document.getElementById('callToggleSpeakerBtn');
   const callSpeakerOnIcon = document.getElementById('callSpeakerOnIcon');
   const callSpeakerOffIcon = document.getElementById('callSpeakerOffIcon');
@@ -365,11 +378,26 @@
   function startDurationTimer() {
     stopDurationTimer();
     callSecondsElapsed = 0;
-    if (callDurationTimer) callDurationTimer.textContent = '00:00';
+    const initialFormatted = '00:00';
+    if (callDurationTimer) callDurationTimer.textContent = initialFormatted;
+    if (floatingPipTimer) floatingPipTimer.textContent = initialFormatted;
+    const partner = getPartnerInfo();
+    if (ongoingBannerMeta) {
+      ongoingBannerMeta.textContent = `${partner.displayName} • ${initialFormatted}`;
+    }
+
     callTimerInterval = setInterval(() => {
       callSecondsElapsed++;
+      const formatted = formatDuration(callSecondsElapsed);
       if (callDurationTimer) {
-        callDurationTimer.textContent = formatDuration(callSecondsElapsed);
+        callDurationTimer.textContent = formatted;
+      }
+      if (ongoingBannerMeta) {
+        const curPartner = getPartnerInfo();
+        ongoingBannerMeta.textContent = `${curPartner.displayName} • ${formatted}`;
+      }
+      if (floatingPipTimer) {
+        floatingPipTimer.textContent = formatted;
       }
     }, 1000);
   }
@@ -784,6 +812,12 @@
     }
     resetPipPosition();
 
+    // Reset minimized state and banner/floating PiP
+    isCallMinimized = false;
+    isVideoSwapped = false;
+    if (ongoingCallBanner) ongoingCallBanner.style.display = 'none';
+    if (floatingCallPip) floatingCallPip.style.display = 'none';
+
     // Setup active call UI based on type
     const partner = getPartnerInfo();
     applyAvatarToImg(activeCallPartnerAvatar, partner.profileImage, partner.displayName);
@@ -794,14 +828,8 @@
       if (callAudioContainer) callAudioContainer.style.display = 'none';
       if (callFlipCameraBtn) callFlipCameraBtn.style.display = 'inline-flex';
       if (callToggleVideoBtn) callToggleVideoBtn.style.display = 'inline-flex';
-      if (remoteVideoPlayer) {
-        remoteVideoPlayer.muted = true; // Video player muted to avoid audio clock desync
-        remoteVideoPlayer.playsInline = true;
-        if (remoteStream && remoteVideoPlayer.srcObject !== remoteStream) {
-          remoteVideoPlayer.srcObject = remoteStream;
-        }
-        remoteVideoPlayer.play().catch(() => {});
-      }
+      applyVideoStreamsToPlayers();
+
       if (remoteAudioPlayer && remoteStream) {
         const audioTracks = remoteStream.getAudioTracks();
         if (audioTracks.length > 0) {
@@ -842,6 +870,163 @@
     updateMediaSession(partner);
     // Request Screen Wake Lock
     requestWakeLock();
+
+    // Push history state so back button minimizes call instead of leaving page
+    try {
+      window.history.pushState({ callingModalOpen: true }, '');
+    } catch (e) {}
+  }
+
+  // ─── Video Stream Assignment & Tap-to-Swap (WhatsApp Style) ────────────────
+  function applyVideoStreamsToPlayers() {
+    if (callType !== 'video') return;
+
+    if (!isVideoSwapped) {
+      // Normal: Remote partner is full screen, local user is small PiP
+      if (remoteVideoPlayer) {
+        if (remoteStream && remoteVideoPlayer.srcObject !== remoteStream) {
+          remoteVideoPlayer.srcObject = remoteStream;
+        }
+        remoteVideoPlayer.muted = true;
+        remoteVideoPlayer.playsInline = true;
+        remoteVideoPlayer.classList.remove('mirror');
+        remoteVideoPlayer.play().catch(() => {});
+      }
+      if (localVideoPlayer) {
+        if (localStream && localVideoPlayer.srcObject !== localStream) {
+          localVideoPlayer.srcObject = localStream;
+        }
+        localVideoPlayer.muted = true;
+        localVideoPlayer.playsInline = true;
+        if (currentFacingMode === 'user') {
+          localVideoPlayer.classList.add('mirror');
+        } else {
+          localVideoPlayer.classList.remove('mirror');
+        }
+        localVideoPlayer.play().catch(() => {});
+      }
+    } else {
+      // Swapped: Local user is full screen, Remote partner is small PiP
+      if (remoteVideoPlayer) {
+        if (localStream && remoteVideoPlayer.srcObject !== localStream) {
+          remoteVideoPlayer.srcObject = localStream;
+        }
+        remoteVideoPlayer.muted = true;
+        remoteVideoPlayer.playsInline = true;
+        if (currentFacingMode === 'user') {
+          remoteVideoPlayer.classList.add('mirror');
+        } else {
+          remoteVideoPlayer.classList.remove('mirror');
+        }
+        remoteVideoPlayer.play().catch(() => {});
+      }
+      if (localVideoPlayer) {
+        if (remoteStream && localVideoPlayer.srcObject !== remoteStream) {
+          localVideoPlayer.srcObject = remoteStream;
+        }
+        localVideoPlayer.muted = true;
+        localVideoPlayer.playsInline = true;
+        localVideoPlayer.classList.remove('mirror');
+        localVideoPlayer.play().catch(() => {});
+      }
+    }
+
+    // If floating PiP is active, ensure it displays remote stream
+    if (floatingCallPip && floatingCallPip.style.display !== 'none' && floatingPipVideo) {
+      if (remoteStream && floatingPipVideo.srcObject !== remoteStream) {
+        floatingPipVideo.srcObject = remoteStream;
+      }
+      floatingPipVideo.muted = true;
+      floatingPipVideo.playsInline = true;
+      floatingPipVideo.play().catch(() => {});
+    }
+  }
+
+  function toggleVideoSwap() {
+    if (callType !== 'video' || callState !== 'connected') return;
+    isVideoSwapped = !isVideoSwapped;
+    applyVideoStreamsToPlayers();
+    if (window.UI?.showToast) {
+      window.UI.showToast(
+        isVideoSwapped ? 'Swapped: Your camera is full screen' : 'Swapped: Partner is full screen',
+        'info',
+        1300
+      );
+    }
+  }
+
+  // ─── Call Minimization & Ongoing Banner (WhatsApp Style) ───────────────────
+  function minimizeCall() {
+    if (callState !== 'connected' || isCallMinimized) return;
+    isCallMinimized = true;
+
+    // 1. Hide active call modal
+    if (activeCallModal) {
+      hideModal(activeCallModal);
+    }
+
+    // 2. Show ongoing top banner above chat header
+    const partner = getPartnerInfo();
+    const formatted = formatDuration(callSecondsElapsed);
+    if (ongoingBannerMeta) {
+      ongoingBannerMeta.textContent = `${partner.displayName} • ${formatted}`;
+    }
+    if (ongoingBannerIcon) {
+      ongoingBannerIcon.textContent = callType === 'video' ? '📹' : '📞';
+    }
+    if (ongoingCallBanner) {
+      ongoingCallBanner.style.display = 'flex';
+    }
+
+    // 3. In video call, show floating draggable PiP over chat display
+    if (callType === 'video' && floatingCallPip) {
+      floatingCallPip.style.display = 'block';
+      if (floatingPipVideo && remoteStream) {
+        floatingPipVideo.srcObject = remoteStream;
+        floatingPipVideo.muted = true;
+        floatingPipVideo.playsInline = true;
+        floatingPipVideo.play().catch(() => {});
+      }
+      if (floatingPipTimer) {
+        floatingPipTimer.textContent = formatted;
+      }
+      resetFloatingPipPosition();
+    }
+
+    if (window.UI?.showToast) {
+      window.UI.showToast(
+        callType === 'video' ? 'Video call running in background' : 'Voice call running in background',
+        'info',
+        1500
+      );
+    }
+  }
+
+  function restoreCallFullscreen() {
+    if (callState !== 'connected' || !isCallMinimized) return;
+    isCallMinimized = false;
+
+    // 1. Hide ongoing banner and floating PiP
+    if (ongoingCallBanner) {
+      ongoingCallBanner.style.display = 'none';
+    }
+    if (floatingCallPip) {
+      floatingCallPip.style.display = 'none';
+    }
+
+    // 2. Show active call modal
+    if (activeCallModal) {
+      showModal(activeCallModal);
+      activeCallModal.classList.remove('controls-hidden');
+    }
+
+    // 3. Re-apply correct video streams
+    applyVideoStreamsToPlayers();
+
+    // 4. Push history state so back button will minimize again
+    try {
+      window.history.pushState({ callingModalOpen: true }, '');
+    } catch (e) {}
   }
 
   function resetControlsUI() {
@@ -1020,14 +1205,7 @@
       localStream.removeTrack(currentVideoTrack);
       localStream.addTrack(newVideoTrack);
 
-      if (localVideoPlayer) {
-        localVideoPlayer.srcObject = localStream;
-        if (currentFacingMode === 'user') {
-          localVideoPlayer.classList.add('mirror');
-        } else {
-          localVideoPlayer.classList.remove('mirror');
-        }
-      }
+      applyVideoStreamsToPlayers();
     } catch (err) {
       console.warn('flipCamera failed:', err);
     }
@@ -1064,6 +1242,8 @@
     targetPartnerId = null;
     pendingIceCandidates = [];
     currentFacingMode = 'user';
+    isCallMinimized = false;
+    isVideoSwapped = false;
 
     stopDurationTimer();
     stopAllTones();
@@ -1102,6 +1282,14 @@
     if (localVideoPlayer) localVideoPlayer.srcObject = null;
     if (remoteVideoPlayer) remoteVideoPlayer.srcObject = null;
     if (remoteAudioPlayer) remoteAudioPlayer.srcObject = null;
+    if (floatingPipVideo) floatingPipVideo.srcObject = null;
+
+    if (ongoingCallBanner) {
+      ongoingCallBanner.style.display = 'none';
+    }
+    if (floatingCallPip) {
+      floatingCallPip.style.display = 'none';
+    }
 
     if (outgoingCallModal) hideModal(outgoingCallModal);
     if (incomingCallModal) hideModal(incomingCallModal);
@@ -1177,6 +1365,9 @@
 
       if (pipMovedDistance > 8) {
         snapPipToNearestCorner();
+      } else {
+        // Tap on the small PiP box -> Swap video views (self <-> partner) exactly like WhatsApp!
+        toggleVideoSwap();
       }
 
       // Reset distance after short delay so screen click handler knows it was a drag
@@ -1234,6 +1425,127 @@
     localVideoWrapper.style.bottom = '';
   }
 
+  // ─── Floating Draggable Mini PiP for Minimized Video Call (WhatsApp Style) ─
+  let floatingPipStartX = 0;
+  let floatingPipStartY = 0;
+  let floatingPipInitialLeft = 0;
+  let floatingPipInitialTop = 0;
+  let isDraggingFloatingPip = false;
+  let floatingPipMovedDistance = 0;
+
+  function initDraggableFloatingPip() {
+    if (!floatingCallPip) return;
+
+    floatingCallPip.addEventListener('pointerdown', (e) => {
+      if (e.button && e.button !== 0) return;
+
+      isDraggingFloatingPip = true;
+      floatingPipMovedDistance = 0;
+      floatingPipStartX = e.clientX;
+      floatingPipStartY = e.clientY;
+
+      const rect = floatingCallPip.getBoundingClientRect();
+      floatingPipInitialLeft = rect.left;
+      floatingPipInitialTop = rect.top;
+
+      try {
+        floatingCallPip.setPointerCapture(e.pointerId);
+      } catch (err) {}
+
+      floatingCallPip.classList.remove('is-snapping');
+      floatingCallPip.classList.add('is-dragging');
+    });
+
+    floatingCallPip.addEventListener('pointermove', (e) => {
+      if (!isDraggingFloatingPip) return;
+
+      const deltaX = e.clientX - floatingPipStartX;
+      const deltaY = e.clientY - floatingPipStartY;
+      floatingPipMovedDistance = Math.hypot(deltaX, deltaY);
+
+      let newLeft = floatingPipInitialLeft + deltaX;
+      let newTop = floatingPipInitialTop + deltaY;
+
+      const maxLeft = window.innerWidth - floatingCallPip.offsetWidth - 10;
+      const maxTop = window.innerHeight - floatingCallPip.offsetHeight - 10;
+      newLeft = Math.max(10, Math.min(newLeft, maxLeft));
+      newTop = Math.max(10, Math.min(newTop, maxTop));
+
+      floatingCallPip.style.left = `${newLeft}px`;
+      floatingCallPip.style.top = `${newTop}px`;
+      floatingCallPip.style.right = 'auto';
+      floatingCallPip.style.bottom = 'auto';
+    });
+
+    const handleFloatingPointerEnd = (e) => {
+      if (!isDraggingFloatingPip) return;
+      isDraggingFloatingPip = false;
+
+      try {
+        floatingCallPip.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+
+      floatingCallPip.classList.remove('is-dragging');
+
+      if (floatingPipMovedDistance > 8) {
+        snapFloatingPipToNearestCorner();
+      } else {
+        // Clean tap on floating PiP -> Restore fullscreen call!
+        restoreCallFullscreen();
+      }
+
+      setTimeout(() => {
+        floatingPipMovedDistance = 0;
+      }, 160);
+    };
+
+    floatingCallPip.addEventListener('pointerup', handleFloatingPointerEnd);
+    floatingCallPip.addEventListener('pointercancel', handleFloatingPointerEnd);
+  }
+
+  function snapFloatingPipToNearestCorner() {
+    if (!floatingCallPip) return;
+    floatingCallPip.classList.add('is-snapping');
+
+    const rect = floatingCallPip.getBoundingClientRect();
+    const pipW = floatingCallPip.offsetWidth;
+    const pipH = floatingCallPip.offsetHeight;
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+
+    const centerX = rect.left + pipW / 2;
+    const snapLeft = centerX < winW / 2 ? 14 : winW - pipW - 14;
+
+    let snapTop = rect.top;
+    const padTop = 60;
+    const padBottom = 85;
+    if (snapTop < padTop) {
+      snapTop = padTop;
+    } else if (snapTop > winH - pipH - padBottom) {
+      snapTop = winH - pipH - padBottom;
+    }
+
+    floatingCallPip.style.left = `${snapLeft}px`;
+    floatingCallPip.style.top = `${snapTop}px`;
+    floatingCallPip.style.right = 'auto';
+    floatingCallPip.style.bottom = 'auto';
+
+    setTimeout(() => {
+      if (floatingCallPip) {
+        floatingCallPip.classList.remove('is-snapping');
+      }
+    }, 340);
+  }
+
+  function resetFloatingPipPosition() {
+    if (!floatingCallPip) return;
+    floatingCallPip.classList.remove('is-dragging', 'is-snapping');
+    floatingCallPip.style.left = '';
+    floatingCallPip.style.top = '';
+    floatingCallPip.style.right = '14px';
+    floatingCallPip.style.bottom = '90px';
+  }
+
   // ─── WhatsApp Immersion: Tap screen to toggle controls & topbar ───────────
   function initScreenTapControlsToggle() {
     if (!activeCallModal) return;
@@ -1241,8 +1553,8 @@
     activeCallModal.addEventListener('click', (e) => {
       if (callState !== 'connected') return;
 
-      // Ignore if clicking on control buttons
-      if (e.target.closest('.active-call-controls-bar')) return;
+      // Ignore if clicking on control buttons or topbar
+      if (e.target.closest('.active-call-controls-bar') || e.target.closest('.active-call-topbar')) return;
 
       // Ignore if clicking or dragging the local video PiP
       if (e.target.closest('#localVideoWrapper') || pipMovedDistance > 8) return;
@@ -1435,6 +1747,39 @@
       });
     }
 
+    // 6. WhatsApp Minimization & Header Banner Controls
+    if (callMinimizeBtn) {
+      callMinimizeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        minimizeCall();
+      });
+    }
+
+    if (ongoingCallBanner) {
+      ongoingCallBanner.addEventListener('click', (e) => {
+        // If clicking end call button inside banner, let its own handler handle it
+        if (e.target.closest('#ongoingBannerEndBtn')) return;
+        restoreCallFullscreen();
+      });
+    }
+
+    if (ongoingBannerEndBtn) {
+      ongoingBannerEndBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        endCall(true);
+      });
+    }
+
+    // WhatsApp Back Navigation: If active call is open and user presses Android/Browser back, minimize instead of closing app
+    window.addEventListener('popstate', (e) => {
+      if (callState === 'connected' && !isCallMinimized) {
+        minimizeCall();
+        try {
+          window.history.pushState({ inCallBackground: true }, '');
+        } catch (err) {}
+      }
+    });
+
     // Handle unload / tab close
     window.addEventListener('beforeunload', () => {
       if (callState !== 'idle') {
@@ -1475,6 +1820,7 @@
 
     // Initialize Draggable PiP & Screen Tap Immersion
     initDraggablePip();
+    initDraggableFloatingPip();
     initScreenTapControlsToggle();
 
     // Initialize socket events
