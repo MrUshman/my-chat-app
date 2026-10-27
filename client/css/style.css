@@ -4244,7 +4244,8 @@ body.motion-minimal .chat-messages {
   transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.call-topbar-btn.call-minimize-btn {
+.call-topbar-btn.call-minimize-btn,
+.call-topbar-btn.call-system-pip-btn {
   appearance: none;
   border: none;
   outline: none;
@@ -4265,12 +4266,14 @@ body.motion-minimal .chat-messages {
   -webkit-tap-highlight-color: transparent;
 }
 
-.call-topbar-btn.call-minimize-btn:hover {
+.call-topbar-btn.call-minimize-btn:hover,
+.call-topbar-btn.call-system-pip-btn:hover {
   background: rgba(255, 255, 255, 0.25);
   transform: scale(1.08);
 }
 
-.call-topbar-btn.call-minimize-btn:active {
+.call-topbar-btn.call-minimize-btn:active,
+.call-topbar-btn.call-system-pip-btn:active {
   transform: scale(0.92);
 }
 

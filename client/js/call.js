@@ -294,6 +294,7 @@
   let isVideoSwapped = false; // WhatsApp tap-to-swap: false = remote fullscreen / local pip; true = local fullscreen / remote pip
 
   const callMinimizeBtn = document.getElementById('callMinimizeBtn');
+  const callSystemPipBtn = document.getElementById('callSystemPipBtn');
   const ongoingCallBanner = document.getElementById('ongoingCallBanner');
   const ongoingBannerIcon = document.getElementById('ongoingBannerIcon');
   const ongoingBannerMeta = document.getElementById('ongoingBannerMeta');
@@ -828,6 +829,13 @@
       if (callAudioContainer) callAudioContainer.style.display = 'none';
       if (callFlipCameraBtn) callFlipCameraBtn.style.display = 'inline-flex';
       if (callToggleVideoBtn) callToggleVideoBtn.style.display = 'inline-flex';
+      if (callSystemPipBtn) {
+        const canPiP = Boolean(
+          document.pictureInPictureEnabled ||
+          (remoteVideoPlayer && typeof remoteVideoPlayer.requestPictureInPicture === 'function')
+        );
+        callSystemPipBtn.style.display = canPiP ? 'inline-flex' : 'none';
+      }
       applyVideoStreamsToPlayers();
 
       if (remoteAudioPlayer && remoteStream) {
@@ -844,6 +852,7 @@
       if (callAudioContainer) callAudioContainer.style.display = 'flex';
       if (callFlipCameraBtn) callFlipCameraBtn.style.display = 'none';
       if (callToggleVideoBtn) callToggleVideoBtn.style.display = 'none';
+      if (callSystemPipBtn) callSystemPipBtn.style.display = 'none';
       if (remoteAudioPlayer) {
         if (remoteStream && remoteAudioPlayer.srcObject !== remoteStream) {
           remoteAudioPlayer.srcObject = remoteStream;
@@ -1027,6 +1036,35 @@
     try {
       window.history.pushState({ callingModalOpen: true }, '');
     } catch (e) {}
+  }
+
+  // ─── Native OS-Level System Picture-in-Picture (Over Other Apps) ───────────
+  async function toggleSystemPictureInPicture() {
+    if (callType !== 'video' || callState !== 'connected') return;
+
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        return;
+      }
+
+      if (remoteVideoPlayer) {
+        if (remoteVideoPlayer.readyState < 2) {
+          await remoteVideoPlayer.play().catch(() => {});
+        }
+        await remoteVideoPlayer.requestPictureInPicture();
+        if (window.UI?.showToast) {
+          window.UI.showToast('Floating window active over other apps 📱', 'success', 2200);
+        }
+      }
+    } catch (err) {
+      console.warn('System Picture-in-Picture request failed:', err);
+      // Fallback: minimize inside chat app
+      minimizeCall();
+      if (window.UI?.showToast) {
+        window.UI.showToast('Floating window active in chat', 'info', 1800);
+      }
+    }
   }
 
   function resetControlsUI() {
@@ -1283,6 +1321,13 @@
     if (remoteVideoPlayer) remoteVideoPlayer.srcObject = null;
     if (remoteAudioPlayer) remoteAudioPlayer.srcObject = null;
     if (floatingPipVideo) floatingPipVideo.srcObject = null;
+
+    if (callSystemPipBtn) {
+      callSystemPipBtn.style.display = 'none';
+    }
+    if (document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {});
+    }
 
     if (ongoingCallBanner) {
       ongoingCallBanner.style.display = 'none';
@@ -1755,6 +1800,13 @@
       });
     }
 
+    if (callSystemPipBtn) {
+      callSystemPipBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleSystemPictureInPicture();
+      });
+    }
+
     if (ongoingCallBanner) {
       ongoingCallBanner.addEventListener('click', (e) => {
         // If clicking end call button inside banner, let its own handler handle it
@@ -1798,6 +1850,15 @@
         if (callState === 'connected' && callType === 'video') {
           remoteVideoPlayer.play().catch(() => {});
         }
+      });
+      // Handle OS-level Picture-in-Picture events
+      remoteVideoPlayer.addEventListener('enterpictureinpicture', () => {
+        if (activeCallModal && !isCallMinimized) {
+          minimizeCall();
+        }
+      });
+      remoteVideoPlayer.addEventListener('leavepictureinpicture', () => {
+        // User closed or expanded out of system PiP
       });
     }
 

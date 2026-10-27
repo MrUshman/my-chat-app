@@ -1407,7 +1407,7 @@
   <div id="activeCallModal" class="calling-fullscreen-overlay active-call-overlay" style="display:none;" role="dialog" aria-modal="true">
     <!-- Video Container (Visible during video call) -->
     <div id="callVideoContainer" class="call-video-container" style="display:none;">
-      <video id="remoteVideoPlayer" class="remote-video-player" playsinline autoplay></video>
+      <video id="remoteVideoPlayer" class="remote-video-player" playsinline autoplay autopictureinpicture></video>
       <div id="localVideoWrapper" class="local-video-wrapper">
         <video id="localVideoPlayer" class="local-video-player" playsinline autoplay muted></video>
       </div>
@@ -1430,11 +1430,17 @@
       </div>
     </div>
 
-    <!-- Top Bar: Back/Minimize, Timer & Status -->
+    <!-- Top Bar: Back/Minimize, System PiP, Timer & Status -->
     <div class="active-call-topbar">
       <button type="button" class="call-topbar-btn call-minimize-btn" id="callMinimizeBtn" title="Back to chat (Call will keep running)" aria-label="Minimize Call">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <button type="button" class="call-topbar-btn call-system-pip-btn" id="callSystemPipBtn" title="Pop out over other apps (System PiP)" aria-label="Floating Window over other apps" style="display:none;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <rect x="11" y="9" width="9" height="6" rx="1" ry="1" fill="currentColor"></rect>
         </svg>
       </button>
       <div class="active-call-badge">
@@ -1553,11 +1559,11 @@
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=25.0"></script>
-  <script src="/js/emoji.js?v=25.0"></script>
-  <script src="/js/media.js?v=25.0"></script>
-  <script src="/js/socket.js?v=25.0"></script>
-  <script src="/js/call.js?v=25.0"></script>
-  <script src="/js/chat.js?v=25.0"></script>
+  <script src="/js/ui.js?v=26.0"></script>
+  <script src="/js/emoji.js?v=26.0"></script>
+  <script src="/js/media.js?v=26.0"></script>
+  <script src="/js/socket.js?v=26.0"></script>
+  <script src="/js/call.js?v=26.0"></script>
+  <script src="/js/chat.js?v=26.0"></script>
 </body>
 </html>
