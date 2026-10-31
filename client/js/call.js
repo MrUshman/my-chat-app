@@ -12,30 +12,44 @@
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      // High-availability OpenRelay TURN & STUN servers (Metered.ca project)
+      // Pierces symmetric NAT & mobile Carrier-Grade NAT (CGNAT on Jio/Airtel/Vi)
+      {
+        urls: [
+          'stun:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
     ],
-    iceCandidatePoolSize: 2,
+    iceCandidatePoolSize: 4,
     bundlePolicy: 'max-bundle', // Multiplex all tracks onto single UDP transport
     rtcpMuxPolicy: 'require',
+    iceTransportPolicy: 'all',
   };
 
-  // ─── WebRTC SDP Optimization for HD Audio & Error Correction ────────────────
+  // ─── WebRTC SDP Optimization for HD Audio, Sharp Video & Error Correction ───
   function optimizeSdp(sdp, isVideo) {
     if (!sdp) return sdp;
     let modified = sdp;
 
-    // Audio optimization: Enable Opus In-Band Forward Error Correction (FEC) with 20ms ptime & VBR
-    // Ensures crystal clear voice without robotic stutter even on slow 2G/3G cellular networks
+    // 1. Audio optimization: Opus In-Band FEC, 64kbps HD Voice, no DTX audio gaps
+    // Ensures crystal clear voice without robotic stutter or cutting even on slow cellular networks
     const opusMatch = modified.match(/a=rtpmap:(\d+)\s+opus\/48000/i);
     if (opusMatch) {
       const pt = opusMatch[1];
       const fmtpRegex = new RegExp(`(a=fmtp:${pt}\\s+[^\\r\\n]+)`, 'i');
-      const opusParams = 'useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=28000;minptime=10;ptime=20;cbr=0';
+      const opusParams = 'useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=64000;minptime=10;ptime=20;cbr=0;usedtx=0;maxplaybackrate=48000;sprop-maxcapturerate=48000';
       if (fmtpRegex.test(modified)) {
-        modified = modified.replace(fmtpRegex, (match) => {
-          if (match.includes('useinbandfec=1')) return match;
-          return `${match};${opusParams}`;
-        });
+        modified = modified.replace(fmtpRegex, `a=fmtp:${pt} ${opusParams}`);
       } else {
         modified = modified.replace(
           new RegExp(`(a=rtpmap:${pt}\\s+opus\/48000\\/2[\\r\\n]+)`, 'i'),
@@ -44,11 +58,38 @@
       }
     }
 
+    // 2. Video optimization: Prioritize hardware-accelerated H.264 & provide bandwidth hints
+    if (isVideo) {
+      // Find all H.264 payload types
+      const h264Payloads = [];
+      const rtpmapRegex = /a=rtpmap:(\d+)\s+H264\/90000/gi;
+      let match;
+      while ((match = rtpmapRegex.exec(modified)) !== null) {
+        h264Payloads.push(match[1]);
+      }
+
+      // Reorder m=video line to put H.264 first (hardware accelerated on all mobile devices)
+      if (h264Payloads.length > 0) {
+        const mVideoRegex = /(m=video\s+\d+\s+[\w\/]+\s+)([\d\s]+)/i;
+        modified = modified.replace(mVideoRegex, (m, prefix, ptList) => {
+          const currentPts = ptList.trim().split(/\s+/);
+          const remainingPts = currentPts.filter((pt) => !h264Payloads.includes(pt));
+          const newPtList = [...h264Payloads, ...remainingPts].join(' ');
+          return `${prefix}${newPtList}`;
+        });
+      }
+
+      // Add bandwidth hints to video section (1.2 Mbps for crisp 720p HD)
+      if (!modified.includes('b=AS:')) {
+        modified = modified.replace(/(m=video[^\r\n]*\r\n)/i, `$1b=AS:1200\r\nb=TIAS:1200000\r\n`);
+      }
+    }
+
     return modified;
   }
 
   // ─── RTCRtpSender Dynamic Bitrate & Adaptive Framerate ──────────────────────
-  async function tuneSenderParameters(pc, type) {
+  async function tuneSenderParameters(pc, type, targetVideoBitrate = 1200000) {
     if (!pc || !pc.getSenders) return;
     try {
       const senders = pc.getSenders();
@@ -61,16 +102,17 @@
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}];
             }
-            // 600 kbps peak bitrate: crystal-clear video with zero packet congestion on slow networks
-            params.encodings[0].maxBitrate = 600000;
-            delete params.encodings[0].minBitrate;
+            // 1.2 Mbps peak bitrate: crystal-clear HD video with 300 kbps minimum floor
+            params.encodings[0].maxBitrate = targetVideoBitrate;
+            params.encodings[0].minBitrate = 300000; // Never drop below readable clarity
             params.encodings[0].networkPriority = 'high';
             params.encodings[0].priority = 'high';
-            params.encodings[0].maxFramerate = 25; // 25 fps reduces packet flood by 17% on mobile
+            params.encodings[0].maxFramerate = 24; // 24 fps is cinema-smooth and saves 20% bandwidth
             params.encodings[0].scaleResolutionDownBy = 1.0;
 
-            // 'balanced': dynamically scales down resolution & framerate on slow networks without freezing
-            params.degradationPreference = 'balanced';
+            // 'maintain-resolution': keeps video sharp and readable on fluctuating networks,
+            // dropping redundant frames rather than blurring into a pixelated smear
+            params.degradationPreference = 'maintain-resolution';
             await sender.setParameters(params);
           } catch (e) {
             console.warn('Sender video parameter tuning error:', e.message);
@@ -81,7 +123,7 @@
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}];
             }
-            params.encodings[0].maxBitrate = 32000; // 32 kbps HD Voice
+            params.encodings[0].maxBitrate = 64000; // 64 kbps HD Voice
             params.encodings[0].networkPriority = 'high';
             params.encodings[0].priority = 'high';
             await sender.setParameters(params);
@@ -247,6 +289,11 @@
   let incomingCallTimeout = null;
   let iceDisconnectTimeout = null;
   let wakeLock = null;
+  let remoteAudioStream = null;
+  let statsMonitorInterval = null;
+  let lastPacketsSent = 0;
+  let lastPacketsLost = 0;
+  let isRenegotiating = false;
 
   // ─── DOM Elements ───────────────────────────────────────────────────────────
   const callActionBtn = document.getElementById('callActionBtn');
@@ -425,19 +472,24 @@
   // ─── Local Media Acquisition (Adaptive HD with Graceful Fallback) ─────────
   async function acquireLocalStream(type) {
     const audioConstraints = {
-      echoCancellation: { ideal: true },
-      noiseSuppression: { ideal: true },
-      autoGainControl: { ideal: true },
-      sampleRate: { ideal: 48000 },
-      channelCount: { ideal: 1 },
-      latency: 0,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      sampleRate: 48000,
+      channelCount: 1,
+      // Google & Android voice DSP processing
+      googEchoCancellation: true,
+      googAutoGainControl: true,
+      googNoiseSuppression: true,
+      googHighpassFilter: true,
+      googAudioMirroring: false,
     };
 
     const videoConstraints = {
       facingMode: currentFacingMode,
-      width: { ideal: 640, max: 960 },
-      height: { ideal: 480, max: 720 },
-      frameRate: { ideal: 25, max: 25 },
+      width: { ideal: 1280, min: 640 },
+      height: { ideal: 720, min: 480 },
+      frameRate: { ideal: 24, max: 25 },
       aspectRatio: { ideal: 16 / 9 },
     };
 
@@ -468,7 +520,13 @@
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
             audio: audioConstraints,
-            video: { facingMode: currentFacingMode },
+            video: {
+              facingMode: currentFacingMode,
+              width: { ideal: 854, min: 480 },
+              height: { ideal: 480, min: 360 },
+              frameRate: { ideal: 24, max: 25 },
+              aspectRatio: { ideal: 16 / 9 },
+            },
           });
           localStream = fallbackStream;
           if (localVideoPlayer) {
@@ -518,6 +576,23 @@
       });
     }
 
+    // Set hardware H.264 codec preference if browser supports RTCRtpTransceiver.setCodecPreferences
+    try {
+      const videoTransceiver = pc.getTransceivers().find(
+        (t) => t.sender && t.sender.track && t.sender.track.kind === 'video'
+      );
+      if (videoTransceiver && typeof RTCRtpSender.getCapabilities === 'function') {
+        const capabilities = RTCRtpSender.getCapabilities('video');
+        if (capabilities && capabilities.codecs) {
+          const h264Codecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/h264');
+          const otherCodecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() !== 'video/h264');
+          if (h264Codecs.length > 0 && typeof videoTransceiver.setCodecPreferences === 'function') {
+            videoTransceiver.setCodecPreferences([...h264Codecs, ...otherCodecs]);
+          }
+        }
+      }
+    } catch (e) {}
+
     // ICE Candidate handler -> send via socket
     pc.onicecandidate = (event) => {
       if (event.candidate && window.ChatSocket) {
@@ -528,47 +603,39 @@
       }
     };
 
-    // Remote Track handler
+    // Remote Track handler — Stable single-assignment prevents audio stutter & dropout
     pc.ontrack = (event) => {
       console.log('📡 Remote track received:', event.track.kind);
       if (!remoteStream) {
         remoteStream = new MediaStream();
       }
-      remoteStream.addTrack(event.track);
+      if (!remoteStream.getTrackById(event.track.id)) {
+        remoteStream.addTrack(event.track);
+      }
 
-      if (callType === 'video') {
-        // Video Call: remoteVideoPlayer renders video (muted so it doesn't collide with audio)
-        if (remoteVideoPlayer) {
-          if (remoteVideoPlayer.srcObject !== remoteStream) {
-            remoteVideoPlayer.srcObject = remoteStream;
-          }
-          remoteVideoPlayer.muted = true;
-          remoteVideoPlayer.playsInline = true;
-          remoteVideoPlayer.play().catch((err) => console.warn('remoteVideoPlayer play() failed:', err));
+      if (event.track.kind === 'audio') {
+        if (!remoteAudioStream) {
+          remoteAudioStream = new MediaStream();
         }
-        // Dedicated audio element plays the sound for background resilience
-        if (remoteAudioPlayer) {
-          const audioTracks = remoteStream.getAudioTracks();
-          if (audioTracks.length > 0) {
-            remoteAudioPlayer.srcObject = new MediaStream(audioTracks);
-            remoteAudioPlayer.muted = false;
-            remoteAudioPlayer.playsInline = true;
-            remoteAudioPlayer.play().catch((err) => console.warn('remoteAudioPlayer play() failed:', err));
-          }
+        // Cleanly retain active audio track without destroying audio player buffer
+        remoteAudioStream.getAudioTracks().forEach((t) => {
+          if (t.id !== event.track.id) remoteAudioStream.removeTrack(t);
+        });
+        if (!remoteAudioStream.getTrackById(event.track.id)) {
+          remoteAudioStream.addTrack(event.track);
         }
-      } else {
-        // Voice Call: remoteAudioPlayer plays audio
+
         if (remoteAudioPlayer) {
-          if (remoteAudioPlayer.srcObject !== remoteStream) {
-            remoteAudioPlayer.srcObject = remoteStream;
+          if (remoteAudioPlayer.srcObject !== remoteAudioStream) {
+            remoteAudioPlayer.srcObject = remoteAudioStream;
           }
           remoteAudioPlayer.muted = false;
+          remoteAudioPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
           remoteAudioPlayer.playsInline = true;
           remoteAudioPlayer.play().catch((err) => console.warn('remoteAudioPlayer play() failed:', err));
         }
-        if (remoteVideoPlayer) {
-          remoteVideoPlayer.srcObject = null;
-        }
+      } else if (event.track.kind === 'video') {
+        applyVideoStreamsToPlayers();
       }
 
       applySpeakerState();
@@ -599,12 +666,14 @@
         console.warn('⚠️ ICE momentarily disconnected, waiting for network recovery...');
         if (!iceDisconnectTimeout) {
           iceDisconnectTimeout = setTimeout(() => {
-            if (pc.iceConnectionState === 'disconnected' && callState === 'connected') {
-              console.log('🔄 Re-tuning connection parameters after network jitter...');
-              tuneSenderParameters(pc, callType);
+            if ((pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') && callState === 'connected') {
+              triggerIceRestart('ice_disconnected');
             }
-          }, 6000);
+          }, 3500);
         }
+      } else if (pc.iceConnectionState === 'failed') {
+        console.warn('⚠️ ICE failed, triggering immediate auto ICE restart...');
+        triggerIceRestart('ice_failed');
       }
     };
 
@@ -838,14 +907,13 @@
       }
       applyVideoStreamsToPlayers();
 
-      if (remoteAudioPlayer && remoteStream) {
-        const audioTracks = remoteStream.getAudioTracks();
-        if (audioTracks.length > 0) {
-          remoteAudioPlayer.srcObject = new MediaStream(audioTracks);
-          remoteAudioPlayer.muted = false;
-          remoteAudioPlayer.playsInline = true;
-          remoteAudioPlayer.play().catch(() => {});
+      if (remoteAudioPlayer && remoteAudioStream) {
+        if (remoteAudioPlayer.srcObject !== remoteAudioStream) {
+          remoteAudioPlayer.srcObject = remoteAudioStream;
         }
+        remoteAudioPlayer.muted = false;
+        remoteAudioPlayer.playsInline = true;
+        remoteAudioPlayer.play().catch(() => {});
       }
     } else {
       if (callVideoContainer) callVideoContainer.style.display = 'none';
@@ -853,9 +921,9 @@
       if (callFlipCameraBtn) callFlipCameraBtn.style.display = 'none';
       if (callToggleVideoBtn) callToggleVideoBtn.style.display = 'none';
       if (callSystemPipBtn) callSystemPipBtn.style.display = 'none';
-      if (remoteAudioPlayer) {
-        if (remoteStream && remoteAudioPlayer.srcObject !== remoteStream) {
-          remoteAudioPlayer.srcObject = remoteStream;
+      if (remoteAudioPlayer && remoteAudioStream) {
+        if (remoteAudioPlayer.srcObject !== remoteAudioStream) {
+          remoteAudioPlayer.srcObject = remoteAudioStream;
         }
         remoteAudioPlayer.muted = false;
         remoteAudioPlayer.playsInline = true;
@@ -870,6 +938,7 @@
     resetControlsUI();
     applySpeakerState();
     startDurationTimer();
+    startStatsMonitor(peerConnection);
 
     // Start silent audio keep-alive to prevent Android OS from killing mic/audio in background
     if (bgKeepAliveAudio) {
@@ -1284,7 +1353,9 @@
     isVideoSwapped = false;
 
     stopDurationTimer();
+    stopStatsMonitor();
     stopAllTones();
+    isRenegotiating = false;
 
     if (incomingCallTimeout) {
       clearTimeout(incomingCallTimeout);
@@ -1300,6 +1371,11 @@
     if (remoteStream) {
       remoteStream.getTracks().forEach((track) => track.stop());
       remoteStream = null;
+    }
+
+    if (remoteAudioStream) {
+      remoteAudioStream.getTracks().forEach((track) => track.stop());
+      remoteAudioStream = null;
     }
 
     if (peerConnection) {
@@ -1609,6 +1685,95 @@
     });
   }
 
+  // ─── Adaptive Bitrate & Network Quality Monitor ─────────────────────────────
+  function startStatsMonitor(pc) {
+    stopStatsMonitor();
+    lastPacketsSent = 0;
+    lastPacketsLost = 0;
+
+    statsMonitorInterval = setInterval(async () => {
+      if (!pc || pc.connectionState !== 'connected' || callState !== 'connected') {
+        return;
+      }
+
+      try {
+        const stats = await pc.getStats();
+        let currentPacketsSent = 0;
+        let currentPacketsLost = 0;
+        let currentRtt = 0;
+
+        stats.forEach((report) => {
+          if (report.type === 'outbound-rtp' && report.kind === 'video') {
+            currentPacketsSent += report.packetsSent || 0;
+          }
+          if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
+            currentPacketsLost += report.packetsLost || 0;
+            if (typeof report.roundTripTime === 'number') {
+              currentRtt = report.roundTripTime * 1000;
+            }
+          }
+          if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime) {
+            currentRtt = report.currentRoundTripTime * 1000;
+          }
+        });
+
+        const deltaSent = currentPacketsSent - lastPacketsSent;
+        const deltaLost = currentPacketsLost - lastPacketsLost;
+        lastPacketsSent = currentPacketsSent;
+        lastPacketsLost = currentPacketsLost;
+
+        if (deltaSent > 25) {
+          const lossRate = Math.max(0, deltaLost) / (deltaSent + Math.max(0, deltaLost));
+          if (lossRate > 0.07 || currentRtt > 380) {
+            // Poor network: adaptively reduce video bitrate to 550 kbps while keeping resolution maintained
+            tuneSenderParameters(pc, callType, 550000);
+          } else if (lossRate < 0.02 && currentRtt < 160) {
+            // Excellent network: restore full HD 1.2 Mbps video
+            tuneSenderParameters(pc, callType, 1200000);
+          }
+        }
+      } catch (e) {}
+    }, 3000);
+  }
+
+  function stopStatsMonitor() {
+    if (statsMonitorInterval) {
+      clearInterval(statsMonitorInterval);
+      statsMonitorInterval = null;
+    }
+  }
+
+  // ─── Auto ICE Restart & Dynamic Renegotiation ──────────────────────────────
+  async function triggerIceRestart(reason) {
+    if (!peerConnection || callState !== 'connected' || isRenegotiating) return;
+    isRenegotiating = true;
+    console.log('🔄 Triggering WebRTC ICE Restart:', reason);
+
+    try {
+      if (typeof peerConnection.restartIce === 'function') {
+        peerConnection.restartIce();
+      }
+      const offer = await peerConnection.createOffer({ iceRestart: true });
+      const optimizedSdp = optimizeSdp(offer.sdp, callType === 'video');
+      const finalOffer = new RTCSessionDescription({ type: offer.type, sdp: optimizedSdp });
+      await peerConnection.setLocalDescription(finalOffer);
+
+      if (window.ChatSocket) {
+        window.ChatSocket.emit('call_renegotiate', {
+          targetUserId: targetPartnerId || currentCallerId,
+          type: 'offer',
+          sdp: finalOffer,
+        });
+      }
+    } catch (err) {
+      console.warn('ICE restart failed:', err);
+    } finally {
+      setTimeout(() => {
+        isRenegotiating = false;
+      }, 4000);
+    }
+  }
+
   // ─── Socket Event Listeners ─────────────────────────────────────────────────
   function registerSocketEvents() {
     if (!window.ChatSocket) {
@@ -1685,6 +1850,46 @@
       console.log('🔴 Call ended by remote user:', data);
       const customMsg = data?.durationSec > 0 ? `Call ended (${formatDuration(data.durationSec)})` : 'Call ended';
       endCall(false, customMsg);
+    });
+
+    // 7. Auto-renegotiate / ICE Restart
+    window.ChatSocket.on('call_renegotiate', async (data) => {
+      if (!peerConnection || callState !== 'connected' || !data?.sdp) return;
+      console.log('🔄 Received call_renegotiate:', data.type);
+
+      try {
+        if (data.type === 'offer') {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+          // Flush any queued candidates
+          while (pendingIceCandidates.length > 0) {
+            const candidate = pendingIceCandidates.shift();
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) => console.warn(e));
+          }
+
+          const answer = await peerConnection.createAnswer();
+          const optimizedAnswer = optimizeSdp(answer.sdp, callType === 'video');
+          const finalAnswer = new RTCSessionDescription({ type: answer.type, sdp: optimizedAnswer });
+          await peerConnection.setLocalDescription(finalAnswer);
+          await tuneSenderParameters(peerConnection, callType);
+
+          window.ChatSocket.emit('call_renegotiate', {
+            targetUserId: data.senderId,
+            type: 'answer',
+            sdp: finalAnswer,
+          });
+        } else if (data.type === 'answer') {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          await tuneSenderParameters(peerConnection, callType);
+
+          while (pendingIceCandidates.length > 0) {
+            const candidate = pendingIceCandidates.shift();
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) => console.warn(e));
+          }
+        }
+      } catch (err) {
+        console.warn('Handling call_renegotiate error:', err);
+      }
     });
   }
 

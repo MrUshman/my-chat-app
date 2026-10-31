@@ -575,6 +575,15 @@ function initChatSocket(io) {
       }
     });
 
+    socket.on('call_renegotiate', (data) => {
+      const { targetUserId, type, sdp } = data || {};
+      if (targetUserId) {
+        io.to(targetUserId).emit('call_renegotiate', { senderId: userId, type, sdp });
+      } else {
+        socket.broadcast.emit('call_renegotiate', { senderId: userId, type, sdp });
+      }
+    });
+
     socket.on('call_ended', async (data) => {
       const { targetUserId, durationSec, callType } = data || {};
       let otherId = targetUserId;

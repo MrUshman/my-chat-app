@@ -1451,9 +1451,9 @@
     </div>
 
     <!-- Remote Audio Player (Used for P2P voice sound) -->
-    <audio id="remoteAudioPlayer" autoplay playsinline style="display:none;"></audio>
+    <audio id="remoteAudioPlayer" autoplay playsinline style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></audio>
     <!-- Background Audio Keep-Alive (Guarantees mic & audio stay alive when app is in background) -->
-    <audio id="bgKeepAliveAudio" loop playsinline style="display:none;"></audio>
+    <audio id="bgKeepAliveAudio" loop playsinline style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></audio>
 
     <!-- In-Call Control Pill Bar (Bottom) -->
     <div class="active-call-controls-bar">
@@ -1559,11 +1559,11 @@
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=26.0"></script>
-  <script src="/js/emoji.js?v=26.0"></script>
-  <script src="/js/media.js?v=26.0"></script>
-  <script src="/js/socket.js?v=26.0"></script>
-  <script src="/js/call.js?v=26.0"></script>
-  <script src="/js/chat.js?v=26.0"></script>
+  <script src="/js/ui.js?v=27.0"></script>
+  <script src="/js/emoji.js?v=27.0"></script>
+  <script src="/js/media.js?v=27.0"></script>
+  <script src="/js/socket.js?v=27.0"></script>
+  <script src="/js/call.js?v=27.0"></script>
+  <script src="/js/chat.js?v=27.0"></script>
 </body>
 </html>
