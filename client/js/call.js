@@ -16,76 +16,66 @@
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' },
-      { urls: 'stun:global.stun.twilio.com:3478' },
-      // High-availability OpenRelay TURN & STUN servers (Metered.ca project)
-      // Pierces symmetric NAT & mobile Carrier-Grade NAT (CGNAT on Jio/Airtel/Vi)
-      {
-        urls: [
-          'stun:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp',
-        ],
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      },
     ],
-    iceCandidatePoolSize: 4,
+    iceCandidatePoolSize: 2,
     bundlePolicy: 'max-bundle', // Multiplex all tracks onto single UDP transport
     rtcpMuxPolicy: 'require',
-    iceTransportPolicy: 'all',
   };
 
   // ─── WebRTC SDP Optimization for HD Audio, Sharp Video & Error Correction ───
   function optimizeSdp(sdp, isVideo) {
     if (!sdp) return sdp;
-    let modified = sdp;
+    try {
+      const lines = sdp.split(/\r?\n/);
 
-    // 1. Audio optimization: Opus In-Band FEC, 64kbps HD Voice, no DTX audio gaps
-    // Ensures crystal clear voice without robotic stutter or cutting even on slow cellular networks
-    const opusMatch = modified.match(/a=rtpmap:(\d+)\s+opus\/48000/i);
-    if (opusMatch) {
-      const pt = opusMatch[1];
-      const fmtpRegex = new RegExp(`(a=fmtp:${pt}\\s+[^\\r\\n]+)`, 'i');
-      const opusParams = 'useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=64000;minptime=10;ptime=20;cbr=0;usedtx=0;maxplaybackrate=48000;sprop-maxcapturerate=48000';
-      if (fmtpRegex.test(modified)) {
-        modified = modified.replace(fmtpRegex, `a=fmtp:${pt} ${opusParams}`);
-      } else {
-        modified = modified.replace(
-          new RegExp(`(a=rtpmap:${pt}\\s+opus\/48000\\/2[\\r\\n]+)`, 'i'),
-          `$1a=fmtp:${pt} ${opusParams}\r\n`
-        );
+      // 1. Audio Optimization: Enable Opus In-Band FEC & 64kbps HD Voice
+      const opusRtpLine = lines.find((l) => /^a=rtpmap:(\d+)\s+opus\/48000/i.test(l));
+      if (opusRtpLine) {
+        const pt = opusRtpLine.match(/^a=rtpmap:(\d+)\s+opus\/48000/i)[1];
+        const fmtpIndex = lines.findIndex((l) => l.startsWith(`a=fmtp:${pt}`));
+        const opusExtra = 'useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=64000;cbr=0';
+        if (fmtpIndex !== -1) {
+          if (!lines[fmtpIndex].includes('maxaveragebitrate=')) {
+            lines[fmtpIndex] += ';' + opusExtra;
+          }
+        } else {
+          const rtpIndex = lines.indexOf(opusRtpLine);
+          lines.splice(rtpIndex + 1, 0, `a=fmtp:${pt} ${opusExtra}`);
+        }
       }
+
+      // 2. Video Optimization: Prioritize H.264 & Add Bandwidth Hints
+      if (isVideo) {
+        const mVideoIndex = lines.findIndex((l) => l.startsWith('m=video '));
+        if (mVideoIndex !== -1) {
+          const h264Payloads = [];
+          lines.forEach((l) => {
+            const m = l.match(/^a=rtpmap:(\d+)\s+H264\/90000/i);
+            if (m) h264Payloads.push(m[1]);
+          });
+
+          if (h264Payloads.length > 0) {
+            const parts = lines[mVideoIndex].split(' ');
+            if (parts.length > 3) {
+              const prefix = parts.slice(0, 3);
+              const pts = parts.slice(3);
+              const nonH264 = pts.filter((p) => !h264Payloads.includes(p));
+              lines[mVideoIndex] = [...prefix, ...h264Payloads, ...nonH264].join(' ');
+            }
+          }
+
+          const hasBandwidth = lines.slice(mVideoIndex, mVideoIndex + 4).some((l) => l.startsWith('b=AS:'));
+          if (!hasBandwidth) {
+            lines.splice(mVideoIndex + 1, 0, 'b=AS:1200', 'b=TIAS:1200000');
+          }
+        }
+      }
+
+      return lines.join('\r\n');
+    } catch (err) {
+      console.warn('optimizeSdp error, using raw SDP:', err);
+      return sdp;
     }
-
-    // 2. Video optimization: Prioritize hardware-accelerated H.264 & provide bandwidth hints
-    if (isVideo) {
-      // Find all H.264 payload types
-      const h264Payloads = [];
-      const rtpmapRegex = /a=rtpmap:(\d+)\s+H264\/90000/gi;
-      let match;
-      while ((match = rtpmapRegex.exec(modified)) !== null) {
-        h264Payloads.push(match[1]);
-      }
-
-      // Reorder m=video line to put H.264 first (hardware accelerated on all mobile devices)
-      if (h264Payloads.length > 0) {
-        const mVideoRegex = /(m=video\s+\d+\s+[\w\/]+\s+)([\d\s]+)/i;
-        modified = modified.replace(mVideoRegex, (m, prefix, ptList) => {
-          const currentPts = ptList.trim().split(/\s+/);
-          const remainingPts = currentPts.filter((pt) => !h264Payloads.includes(pt));
-          const newPtList = [...h264Payloads, ...remainingPts].join(' ');
-          return `${prefix}${newPtList}`;
-        });
-      }
-
-      // Add bandwidth hints to video section (1.2 Mbps for crisp 720p HD)
-      if (!modified.includes('b=AS:')) {
-        modified = modified.replace(/(m=video[^\r\n]*\r\n)/i, `$1b=AS:1200\r\nb=TIAS:1200000\r\n`);
-      }
-    }
-
-    return modified;
   }
 
   // ─── RTCRtpSender Dynamic Bitrate & Adaptive Framerate ──────────────────────
@@ -102,20 +92,13 @@
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}];
             }
-            // 1.2 Mbps peak bitrate: crystal-clear HD video with 300 kbps minimum floor
             params.encodings[0].maxBitrate = targetVideoBitrate;
-            params.encodings[0].minBitrate = 300000; // Never drop below readable clarity
-            params.encodings[0].networkPriority = 'high';
-            params.encodings[0].priority = 'high';
-            params.encodings[0].maxFramerate = 24; // 24 fps is cinema-smooth and saves 20% bandwidth
+            params.encodings[0].maxFramerate = 24;
             params.encodings[0].scaleResolutionDownBy = 1.0;
-
-            // 'maintain-resolution': keeps video sharp and readable on fluctuating networks,
-            // dropping redundant frames rather than blurring into a pixelated smear
             params.degradationPreference = 'maintain-resolution';
             await sender.setParameters(params);
           } catch (e) {
-            console.warn('Sender video parameter tuning error:', e.message);
+            console.warn('Sender video tuning notice:', e.message);
           }
         } else if (sender.track.kind === 'audio') {
           try {
@@ -123,12 +106,10 @@
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}];
             }
-            params.encodings[0].maxBitrate = 64000; // 64 kbps HD Voice
-            params.encodings[0].networkPriority = 'high';
-            params.encodings[0].priority = 'high';
+            params.encodings[0].maxBitrate = 64000;
             await sender.setParameters(params);
           } catch (e) {
-            console.warn('Sender audio parameter tuning error:', e.message);
+            console.warn('Sender audio tuning notice:', e.message);
           }
         }
       }
@@ -472,25 +453,16 @@
   // ─── Local Media Acquisition (Adaptive HD with Graceful Fallback) ─────────
   async function acquireLocalStream(type) {
     const audioConstraints = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      sampleRate: 48000,
-      channelCount: 1,
-      // Google & Android voice DSP processing
-      googEchoCancellation: true,
-      googAutoGainControl: true,
-      googNoiseSuppression: true,
-      googHighpassFilter: true,
-      googAudioMirroring: false,
+      echoCancellation: { ideal: true },
+      noiseSuppression: { ideal: true },
+      autoGainControl: { ideal: true },
     };
 
     const videoConstraints = {
       facingMode: currentFacingMode,
-      width: { ideal: 1280, min: 640 },
-      height: { ideal: 720, min: 480 },
-      frameRate: { ideal: 24, max: 25 },
-      aspectRatio: { ideal: 16 / 9 },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 24, max: 30 },
     };
 
     try {
@@ -520,13 +492,7 @@
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
             audio: audioConstraints,
-            video: {
-              facingMode: currentFacingMode,
-              width: { ideal: 854, min: 480 },
-              height: { ideal: 480, min: 360 },
-              frameRate: { ideal: 24, max: 25 },
-              aspectRatio: { ideal: 16 / 9 },
-            },
+            video: { facingMode: currentFacingMode },
           });
           localStream = fallbackStream;
           if (localVideoPlayer) {
@@ -666,14 +632,12 @@
         console.warn('⚠️ ICE momentarily disconnected, waiting for network recovery...');
         if (!iceDisconnectTimeout) {
           iceDisconnectTimeout = setTimeout(() => {
-            if ((pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') && callState === 'connected') {
-              triggerIceRestart('ice_disconnected');
+            if (pc.iceConnectionState === 'disconnected' && callState === 'connected') {
+              console.log('🔄 Re-tuning connection parameters after network jitter...');
+              tuneSenderParameters(pc, callType);
             }
-          }, 3500);
+          }, 6000);
         }
-      } else if (pc.iceConnectionState === 'failed') {
-        console.warn('⚠️ ICE failed, triggering immediate auto ICE restart...');
-        triggerIceRestart('ice_failed');
       }
     };
 
@@ -1204,7 +1168,7 @@
     }
   }
 
-  async function applySpeakerState() {
+  function applySpeakerState() {
     if (callToggleSpeakerBtn) {
       callToggleSpeakerBtn.classList.toggle('speaker-on', isSpeakerMode);
     }
@@ -1212,31 +1176,8 @@
     if (callSpeakerOffIcon) callSpeakerOffIcon.style.display = isSpeakerMode ? 'none' : 'block';
     if (callSpeakerLabel) callSpeakerLabel.textContent = isSpeakerMode ? 'Speaker' : 'Earpiece';
 
-    // remoteAudioPlayer handles audio in both voice and video calls for background resilience
     if (remoteAudioPlayer) {
       remoteAudioPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
-
-      if (typeof remoteAudioPlayer.setSinkId === 'function') {
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const audioOutputs = devices.filter((d) => d.kind === 'audiooutput');
-          if (audioOutputs.length > 0) {
-            if (isSpeakerMode) {
-              const spk = audioOutputs.find((d) => /speaker|loudspeaker|built-in speaker/i.test(d.label)) || audioOutputs[0];
-              if (spk && spk.deviceId) await remoteAudioPlayer.setSinkId(spk.deviceId);
-            } else {
-              const ear = audioOutputs.find((d) => /earpiece|earphone|headset|receiver/i.test(d.label)) || audioOutputs[1] || audioOutputs[0];
-              if (ear && ear.deviceId) {
-                await remoteAudioPlayer.setSinkId(ear.deviceId);
-              } else {
-                await remoteAudioPlayer.setSinkId('');
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('applySpeakerState setSinkId error:', e);
-        }
-      }
     }
   }
 
