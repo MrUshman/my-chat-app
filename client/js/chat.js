@@ -567,7 +567,7 @@ function renderMessage(msg, position = 'append', container = null) {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
               <span>Expand</span>
             </button>
-            <a class="video-btn-download" href="${msg.mediaUrl}?download=true&filename=chat-video.${ext}" download="chat-video.${ext}" title="Download video" aria-label="Download video">
+            <a class="video-btn-download" href="${msg.mediaUrl}?download=true&filename=chat-video.${ext}" download="chat-video.${ext}" target="_blank" rel="noopener noreferrer" title="Download video" aria-label="Download video">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
               <span>Download</span>
             </a>

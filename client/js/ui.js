@@ -270,9 +270,11 @@ if (videoModalDownload) {
     const a = document.createElement('a');
     a.href = `${currentVideoUrl}?download=true&filename=${encodeURIComponent(currentVideoFilename)}`;
     a.download = currentVideoFilename;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
     document.body.appendChild(a);
     a.click();
-    a.remove();
+    setTimeout(() => a.remove(), 1000);
   });
 }
 
