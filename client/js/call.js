@@ -271,10 +271,25 @@
   let iceDisconnectTimeout = null;
   let wakeLock = null;
   let remoteAudioStream = null;
+  let remoteVideoStream = null;
   let statsMonitorInterval = null;
   let lastPacketsSent = 0;
   let lastPacketsLost = 0;
   let isRenegotiating = false;
+
+  function getCurrentUserId() {
+    let u = null;
+    if (typeof window.getCurrentUser === 'function') {
+      u = window.getCurrentUser();
+    }
+    if (!u) {
+      try {
+        const cached = localStorage.getItem('cached_user');
+        if (cached) u = JSON.parse(cached);
+      } catch (e) {}
+    }
+    return u?._id?.toString() || '';
+  }
 
   // ─── DOM Elements ───────────────────────────────────────────────────────────
   const callActionBtn = document.getElementById('callActionBtn');
@@ -569,7 +584,7 @@
       }
     };
 
-    // Remote Track handler — Stable single-assignment prevents audio stutter & dropout
+    // Remote Track handler — Cleanly isolates audio & video streams, triggers instant disconnect on track end
     pc.ontrack = (event) => {
       console.log('📡 Remote track received:', event.track.kind);
       if (!remoteStream) {
@@ -579,11 +594,18 @@
         remoteStream.addTrack(event.track);
       }
 
+      // Partner stopped track (instant call cut on track termination)
+      event.track.onended = () => {
+        console.log('📡 Remote track ended by partner:', event.track.kind);
+        if (callState === 'connected') {
+          endCall(false, 'Partner ended call');
+        }
+      };
+
       if (event.track.kind === 'audio') {
         if (!remoteAudioStream) {
           remoteAudioStream = new MediaStream();
         }
-        // Cleanly retain active audio track without destroying audio player buffer
         remoteAudioStream.getAudioTracks().forEach((t) => {
           if (t.id !== event.track.id) remoteAudioStream.removeTrack(t);
         });
@@ -601,6 +623,21 @@
           remoteAudioPlayer.play().catch((err) => console.warn('remoteAudioPlayer play() failed:', err));
         }
       } else if (event.track.kind === 'video') {
+        if (!remoteVideoStream) {
+          remoteVideoStream = new MediaStream();
+        }
+        remoteVideoStream.getVideoTracks().forEach((t) => {
+          if (t.id !== event.track.id) remoteVideoStream.removeTrack(t);
+        });
+        if (!remoteVideoStream.getTrackById(event.track.id)) {
+          remoteVideoStream.addTrack(event.track);
+        }
+
+        event.track.onunmute = () => {
+          console.log('🎥 Remote video track unmuted and streaming');
+          applyVideoStreamsToPlayers();
+        };
+
         applyVideoStreamsToPlayers();
       }
 
@@ -717,7 +754,42 @@
     if (!data) return;
     const { callerId, callerName, callerAvatar, callType: incomingType, offer } = data;
 
-    // If currently already busy in a call, reject
+    // WhatsApp-Style Simultaneous Calling Resolution (Glare tie-breaker)
+    // If both users call each other at the exact same moment:
+    if (callState === 'calling') {
+      const myId = getCurrentUserId();
+      const otherId = callerId ? callerId.toString() : '';
+      console.log('🔄 Simultaneous call detected! MyId:', myId, 'OtherId:', otherId);
+
+      // Deterministic tie-breaker:
+      // Larger user ID yields outgoing call, adopts incoming offer, and immediately answers!
+      if (myId && otherId && myId.localeCompare(otherId) > 0) {
+        console.log('🔄 Yielding outgoing call to auto-answer partner simultaneous call');
+        stopAllTones();
+        if (outgoingCallModal) hideModal(outgoingCallModal);
+
+        if (peerConnection) {
+          peerConnection.close();
+          peerConnection = null;
+        }
+        if (localStream) {
+          localStream.getTracks().forEach((t) => t.stop());
+          localStream = null;
+        }
+
+        callState = 'ringing';
+        callType = incomingType || callType;
+        currentCallerId = callerId;
+        incomingOfferData = offer;
+        acceptIncomingCall();
+        return;
+      } else {
+        console.log('🔄 Maintaining outgoing call as primary caller; partner is auto-answering');
+        return;
+      }
+    }
+
+    // If currently busy in an active connected call, reject
     if (callState !== 'idle') {
       if (window.ChatSocket) {
         window.ChatSocket.emit('call_rejected', { callerId, reason: 'busy' });
@@ -777,7 +849,10 @@
         await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) => console.warn(e));
       }
 
-      const answer = await pc.createAnswer();
+      const answer = await pc.createAnswer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: callType === 'video',
+      });
       const optimizedAnswerSdp = optimizeSdp(answer.sdp, callType === 'video');
       const finalAnswer = new RTCSessionDescription({ type: answer.type, sdp: optimizedAnswerSdp });
       await pc.setLocalDescription(finalAnswer);
@@ -923,64 +998,46 @@
   function applyVideoStreamsToPlayers() {
     if (callType !== 'video') return;
 
-    if (!isVideoSwapped) {
-      // Normal: Remote partner is full screen, local user is small PiP
-      if (remoteVideoPlayer) {
-        if (remoteStream && remoteVideoPlayer.srcObject !== remoteStream) {
-          remoteVideoPlayer.srcObject = remoteStream;
-        }
-        remoteVideoPlayer.muted = true;
-        remoteVideoPlayer.playsInline = true;
-        remoteVideoPlayer.classList.remove('mirror');
+    const fullStream = !isVideoSwapped ? (remoteVideoStream || remoteStream) : localStream;
+    const pipStream = !isVideoSwapped ? localStream : (remoteVideoStream || remoteStream);
+    const isFullMirror = !isVideoSwapped ? false : currentFacingMode === 'user';
+    const isPipMirror = !isVideoSwapped ? currentFacingMode === 'user' : false;
+
+    if (remoteVideoPlayer) {
+      if (fullStream && remoteVideoPlayer.srcObject !== fullStream) {
+        remoteVideoPlayer.srcObject = fullStream;
+      }
+      remoteVideoPlayer.muted = true;
+      remoteVideoPlayer.playsInline = true;
+      remoteVideoPlayer.classList.toggle('mirror', isFullMirror);
+      if (remoteVideoPlayer.paused) {
         remoteVideoPlayer.play().catch(() => {});
       }
-      if (localVideoPlayer) {
-        if (localStream && localVideoPlayer.srcObject !== localStream) {
-          localVideoPlayer.srcObject = localStream;
-        }
-        localVideoPlayer.muted = true;
-        localVideoPlayer.playsInline = true;
-        if (currentFacingMode === 'user') {
-          localVideoPlayer.classList.add('mirror');
-        } else {
-          localVideoPlayer.classList.remove('mirror');
-        }
-        localVideoPlayer.play().catch(() => {});
+    }
+
+    if (localVideoPlayer) {
+      if (pipStream && localVideoPlayer.srcObject !== pipStream) {
+        localVideoPlayer.srcObject = pipStream;
       }
-    } else {
-      // Swapped: Local user is full screen, Remote partner is small PiP
-      if (remoteVideoPlayer) {
-        if (localStream && remoteVideoPlayer.srcObject !== localStream) {
-          remoteVideoPlayer.srcObject = localStream;
-        }
-        remoteVideoPlayer.muted = true;
-        remoteVideoPlayer.playsInline = true;
-        if (currentFacingMode === 'user') {
-          remoteVideoPlayer.classList.add('mirror');
-        } else {
-          remoteVideoPlayer.classList.remove('mirror');
-        }
-        remoteVideoPlayer.play().catch(() => {});
-      }
-      if (localVideoPlayer) {
-        if (remoteStream && localVideoPlayer.srcObject !== remoteStream) {
-          localVideoPlayer.srcObject = remoteStream;
-        }
-        localVideoPlayer.muted = true;
-        localVideoPlayer.playsInline = true;
-        localVideoPlayer.classList.remove('mirror');
+      localVideoPlayer.muted = true;
+      localVideoPlayer.playsInline = true;
+      localVideoPlayer.classList.toggle('mirror', isPipMirror);
+      if (localVideoPlayer.paused) {
         localVideoPlayer.play().catch(() => {});
       }
     }
 
-    // If floating PiP is active, ensure it displays remote stream
+    // If floating PiP is active, ensure it displays remote video
     if (floatingCallPip && floatingCallPip.style.display !== 'none' && floatingPipVideo) {
-      if (remoteStream && floatingPipVideo.srcObject !== remoteStream) {
-        floatingPipVideo.srcObject = remoteStream;
+      const pipTarget = remoteVideoStream || remoteStream;
+      if (pipTarget && floatingPipVideo.srcObject !== pipTarget) {
+        floatingPipVideo.srcObject = pipTarget;
       }
       floatingPipVideo.muted = true;
       floatingPipVideo.playsInline = true;
-      floatingPipVideo.play().catch(() => {});
+      if (floatingPipVideo.paused) {
+        floatingPipVideo.play().catch(() => {});
+      }
     }
   }
 
@@ -1317,6 +1374,11 @@
     if (remoteAudioStream) {
       remoteAudioStream.getTracks().forEach((track) => track.stop());
       remoteAudioStream = null;
+    }
+
+    if (remoteVideoStream) {
+      remoteVideoStream.getTracks().forEach((track) => track.stop());
+      remoteVideoStream = null;
     }
 
     if (peerConnection) {
@@ -1772,18 +1834,15 @@
       }
     });
 
-    // 5. Call Rejected / Busy
+    // 5. Call Rejected / Busy (Closes instantly on decline)
     window.ChatSocket.on('call_rejected', (data) => {
       const reason = data?.reason === 'busy' ? 'Partner is busy in another call' : 'Call declined';
       stopAllTones();
       playEndTone();
-      if (outgoingCallStatus) outgoingCallStatus.textContent = reason;
-      setTimeout(() => {
-        cleanupCallState();
-        if (window.UI?.showToast) {
-          window.UI.showToast(reason, 'info');
-        }
-      }, 1500);
+      cleanupCallState();
+      if (window.UI?.showToast) {
+        window.UI.showToast(reason, 'info');
+      }
     });
 
     // 6. Call Ended by other user

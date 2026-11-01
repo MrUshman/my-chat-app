@@ -601,13 +601,10 @@ function initChatSocket(io) {
           recordCallMessage(io, session, status, dur);
           activeCallSessions.delete(callKey);
         }
+        // Always emit to partner user room AND broadcast to all sockets
+        io.to(otherId).emit('call_ended', { durationSec, callType });
       }
-
-      if (targetUserId) {
-        io.to(targetUserId).emit('call_ended', { durationSec, callType });
-      } else {
-        socket.broadcast.emit('call_ended', { durationSec, callType });
-      }
+      socket.broadcast.emit('call_ended', { durationSec, callType });
     });
 
     // ─── Explicit Client Offline Event (on tab close/hide) ───────────────────
@@ -629,9 +626,12 @@ function initChatSocket(io) {
 
       unregisterUser(userId, socket.id);
 
-      // Record any unclosed call session involving this user
+      // Record any unclosed call session involving this user & alert partner immediately
       for (const [key, session] of activeCallSessions.entries()) {
         if (session.callerId === userId || session.calleeId === userId) {
+          const otherUserId = session.callerId === userId ? session.calleeId : session.callerId;
+          io.to(otherUserId).emit('call_ended', { durationSec: 0, callType: session.callType });
+          socket.broadcast.emit('call_ended', { durationSec: 0, callType: session.callType });
           recordCallMessage(io, session);
           activeCallSessions.delete(key);
         }
