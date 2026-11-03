@@ -72,18 +72,24 @@ function initSocket() {
 
   // ─── Lifecycle & Tab Visibility Management ──────────────────────
 
-  // Disconnect cleanly when user closes tab or navigates away
+  // Disconnect cleanly when user closes tab or navigates away (only when NOT in an active call)
   window.addEventListener('beforeunload', () => {
     if (socket && socket.connected) {
-      try { socket.emit('client_offline'); } catch(e) {}
-      socket.disconnect();
+      const inCall = window.CallManager && typeof window.CallManager.isCallActive === 'function' && window.CallManager.isCallActive();
+      if (!inCall) {
+        try { socket.emit('client_offline'); } catch(e) {}
+        socket.disconnect();
+      }
     }
   });
 
   window.addEventListener('pagehide', () => {
     if (socket && socket.connected) {
-      try { socket.emit('client_offline'); } catch(e) {}
-      socket.disconnect();
+      const inCall = window.CallManager && typeof window.CallManager.isCallActive === 'function' && window.CallManager.isCallActive();
+      if (!inCall) {
+        try { socket.emit('client_offline'); } catch(e) {}
+        socket.disconnect();
+      }
     }
   });
 
@@ -100,7 +106,8 @@ function initSocket() {
 
   // Mobile Android/iOS Page Lifecycle API (freeze & resume)
   document.addEventListener('freeze', () => {
-    if (socket && socket.connected) {
+    const inCall = window.CallManager && typeof window.CallManager.isCallActive === 'function' && window.CallManager.isCallActive();
+    if (!inCall && socket && socket.connected) {
       try { socket.emit('client_offline'); } catch(e) {}
     }
   });
@@ -134,7 +141,8 @@ function initSocket() {
     } else if (document.visibilityState === 'hidden') {
       if (backgroundOfflineTimer) clearTimeout(backgroundOfflineTimer);
       backgroundOfflineTimer = setTimeout(() => {
-        if (document.visibilityState === 'hidden' && socket && socket.connected) {
+        const inCall = window.CallManager && typeof window.CallManager.isCallActive === 'function' && window.CallManager.isCallActive();
+        if (!inCall && document.visibilityState === 'hidden' && socket && socket.connected) {
           try { socket.emit('client_offline'); } catch(e) {}
         }
       }, 3000);

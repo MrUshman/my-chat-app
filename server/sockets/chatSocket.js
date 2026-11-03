@@ -161,6 +161,17 @@ function initChatSocket(io) {
 
     // Register this socket and join user room
     registerUser(userId, socket.id);
+
+    // Cancel any pending disconnect timers for this user across active call sessions
+    for (const [key, session] of activeCallSessions.entries()) {
+      if (session.callerId === userId || session.calleeId === userId) {
+        if (session.disconnectTimers && session.disconnectTimers[userId]) {
+          clearTimeout(session.disconnectTimers[userId]);
+          delete session.disconnectTimers[userId];
+          console.log(`🔄 Cancelled call disconnect timer for reconnected user ${userId}`);
+        }
+      }
+    }
     socket.join(userId);
 
     // Send partner's current status directly to this user on connect
@@ -596,6 +607,9 @@ function initChatSocket(io) {
         const callKey = getCallKey(userId, otherId);
         const session = activeCallSessions.get(callKey);
         if (session) {
+          if (session.disconnectTimers) {
+            Object.values(session.disconnectTimers).forEach((t) => clearTimeout(t));
+          }
           const dur = typeof durationSec === 'number' ? durationSec : 0;
           const status = session.connected ? 'completed' : 'missed';
           recordCallMessage(io, session, status, dur);
@@ -626,14 +640,21 @@ function initChatSocket(io) {
 
       unregisterUser(userId, socket.id);
 
-      // Record any unclosed call session involving this user & alert partner immediately
+      // Give a 45s grace period for socket reconnect rather than instantly killing active call
       for (const [key, session] of activeCallSessions.entries()) {
         if (session.callerId === userId || session.calleeId === userId) {
-          const otherUserId = session.callerId === userId ? session.calleeId : session.callerId;
-          io.to(otherUserId).emit('call_ended', { durationSec: 0, callType: session.callType });
-          socket.broadcast.emit('call_ended', { durationSec: 0, callType: session.callType });
-          recordCallMessage(io, session);
-          activeCallSessions.delete(key);
+          if (!session.disconnectTimers) session.disconnectTimers = {};
+          if (!session.disconnectTimers[userId]) {
+            session.disconnectTimers[userId] = setTimeout(() => {
+              if (!isUserOnline(userId, io)) {
+                console.log(`⏱️ Call session grace period expired for disconnected user ${userId}`);
+                const otherUserId = session.callerId === userId ? session.calleeId : session.callerId;
+                io.to(otherUserId).emit('call_ended', { durationSec: 0, callType: session.callType });
+                recordCallMessage(io, session);
+                activeCallSessions.delete(key);
+              }
+            }, 45000);
+          }
         }
       }
 

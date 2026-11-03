@@ -306,6 +306,7 @@
   let pendingIceCandidates = [];
   let incomingCallTimeout = null;
   let iceDisconnectTimeout = null;
+  let connectionFailedTimeout = null;
   let wakeLock = null;
   let remoteAudioStream = null;
   let remoteVideoStream = null;
@@ -654,11 +655,14 @@
         remoteStream.addTrack(event.track);
       }
 
-      // Partner stopped track (instant call cut on track termination)
+      // When a remote track ends (e.g. camera flipped/toggled), do NOT end the call!
       event.track.onended = () => {
-        console.log('📡 Remote track ended by partner:', event.track.kind);
-        if (callState === 'connected') {
-          endCall(false, 'Partner ended call');
+        console.log('📡 Remote track ended:', event.track.kind);
+        if (event.track.kind === 'video') {
+          if (remoteVideoPlayer) {
+            remoteVideoPlayer.srcObject = null;
+          }
+          applyVideoStreamsToPlayers();
         }
       };
 
@@ -704,15 +708,30 @@
       applySpeakerState();
     };
 
-    // Connection state changes
+    // Connection state changes with automatic ICE restart recovery
     pc.onconnectionstatechange = () => {
       console.log('🔄 WebRTC connectionState:', pc.connectionState);
       if (pc.connectionState === 'connected') {
+        if (connectionFailedTimeout) {
+          clearTimeout(connectionFailedTimeout);
+          connectionFailedTimeout = null;
+        }
         tuneSenderParameters(pc, callType);
         transitionToConnected();
-      } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      } else if (pc.connectionState === 'failed') {
+        console.warn('⚠️ WebRTC connectionState failed, attempting ICE restart before ending...');
+        triggerIceRestart('connectionState failed');
+        if (!connectionFailedTimeout) {
+          connectionFailedTimeout = setTimeout(() => {
+            if (pc.connectionState === 'failed' && callState === 'connected') {
+              console.error('❌ Connection recovery timed out, closing call.');
+              endCall(false, 'Connection lost');
+            }
+          }, 10000);
+        }
+      } else if (pc.connectionState === 'closed') {
         if (callState === 'connected') {
-          endCall(false, 'Connection lost');
+          endCall(false, 'Call closed');
         }
       }
     };
@@ -724,17 +743,24 @@
           clearTimeout(iceDisconnectTimeout);
           iceDisconnectTimeout = null;
         }
+        if (connectionFailedTimeout) {
+          clearTimeout(connectionFailedTimeout);
+          connectionFailedTimeout = null;
+        }
         tuneSenderParameters(pc, callType);
       } else if (pc.iceConnectionState === 'disconnected') {
         console.warn('⚠️ ICE momentarily disconnected, waiting for network recovery...');
         if (!iceDisconnectTimeout) {
           iceDisconnectTimeout = setTimeout(() => {
             if (pc.iceConnectionState === 'disconnected' && callState === 'connected') {
-              console.log('🔄 Re-tuning connection parameters after network jitter...');
-              tuneSenderParameters(pc, callType);
+              console.log('🔄 Triggering ICE restart after 6s network disconnect...');
+              triggerIceRestart('ICE disconnected 6s');
             }
           }, 6000);
         }
+      } else if (pc.iceConnectionState === 'failed') {
+        console.warn('⚠️ ICE failed, triggering immediate ICE restart...');
+        triggerIceRestart('ICE state failed');
       }
     };
 
@@ -1462,6 +1488,10 @@
     if (iceDisconnectTimeout) {
       clearTimeout(iceDisconnectTimeout);
       iceDisconnectTimeout = null;
+    }
+    if (connectionFailedTimeout) {
+      clearTimeout(connectionFailedTimeout);
+      connectionFailedTimeout = null;
     }
 
     if (localVideoPlayer) localVideoPlayer.srcObject = null;
@@ -2225,5 +2255,6 @@
     startVideoCall: () => initiateCall('video'),
     endCurrentCall: () => endCall(true),
     getState: () => callState,
+    isCallActive: () => callState !== 'idle',
   };
 })();
