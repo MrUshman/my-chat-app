@@ -299,8 +299,8 @@
   let remoteStream = null;
   let currentCallerId = null;
   let targetPartnerId = null;
-  let currentFacingMode = 'user';
-    isAcceptingCall = false; // 'user' | 'environment'
+  let currentFacingMode = 'user'; // 'user' | 'environment'
+  let isAcceptingCall = false;
   let callTimerInterval = null;
   let callSecondsElapsed = 0;
   let pendingIceCandidates = [];
@@ -947,7 +947,6 @@
   }
 
   // Accept incoming call
-  let isAcceptingCall = false;
   async function acceptIncomingCall() {
     if (callState !== 'ringing' || !incomingOfferData || isAcceptingCall) return;
     isAcceptingCall = true;
@@ -1532,6 +1531,7 @@
     currentFacingMode = 'user';
     isCallMinimized = false;
     isVideoSwapped = false;
+    isAcceptingCall = false;
 
     stopDurationTimer();
     stopStatsMonitor();
