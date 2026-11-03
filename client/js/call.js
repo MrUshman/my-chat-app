@@ -505,12 +505,8 @@
 
   // Helper: WhatsApp-style camera constraints matching mobile portrait orientation
   function getVideoConstraints() {
-    const isPortrait = window.innerHeight >= window.innerWidth;
     return {
-      facingMode: currentFacingMode,
-      width: { ideal: isPortrait ? 720 : 1280 },
-      height: { ideal: isPortrait ? 1280 : 720 },
-      aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
+      facingMode: currentFacingMode || 'user',
       frameRate: { ideal: 30, max: 30 },
     };
   }
@@ -531,13 +527,7 @@
       autoGainControl: true,
     };
 
-    const isPortrait = window.innerHeight >= window.innerWidth;
-    const videoConstraints = {
-      facingMode: currentFacingMode || 'user',
-      width: { ideal: isPortrait ? 720 : 1280 },
-      height: { ideal: isPortrait ? 1280 : 720 },
-      frameRate: { ideal: 30, max: 30 },
-    };
+    const videoConstraints = getVideoConstraints();
 
     let stream = null;
 
@@ -1130,7 +1120,7 @@
         remoteVideoPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.remove('mirror');
-        remoteVideoPlayer.style.objectFit = 'cover';
+        remoteVideoPlayer.style.objectFit = 'contain';
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
@@ -1164,7 +1154,7 @@
         remoteVideoPlayer.muted = true;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
-        remoteVideoPlayer.style.objectFit = 'cover';
+        remoteVideoPlayer.style.objectFit = 'contain';
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
