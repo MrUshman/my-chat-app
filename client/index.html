@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=35.0" />
-  <link rel="preload" href="/css/style.css?v=35.0" as="style" />
+  <link rel="stylesheet" href="/css/style.css?v=36.0" />
+  <link rel="preload" href="/css/style.css?v=36.0" as="style" />
   <link rel="preload" href="/js/chat.js?v=21.0" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
@@ -1407,6 +1407,7 @@
   <div id="activeCallModal" class="calling-fullscreen-overlay active-call-overlay" style="display:none;" role="dialog" aria-modal="true">
     <!-- Video Container (Visible during video call) -->
     <div id="callVideoContainer" class="call-video-container" style="display:none;">
+      <video id="remoteVideoPlayerBg" class="remote-video-player-bg" playsinline autoplay muted></video>
       <video id="remoteVideoPlayer" class="remote-video-player" playsinline autoplay autopictureinpicture></video>
       <div id="localVideoWrapper" class="local-video-wrapper">
         <video id="localVideoPlayer" class="local-video-player" playsinline autoplay muted></video>
@@ -1442,6 +1443,15 @@
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
           <rect x="11" y="9" width="9" height="6" rx="1" ry="1" fill="currentColor"></rect>
         </svg>
+      </button>
+      <button type="button" class="call-topbar-btn call-zoom-btn" id="callZoomToggleBtn" title="Toggle Full Wide / Fill Screen" aria-label="Toggle Zoom" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <polyline points="9 21 3 21 3 15"></polyline>
+          <line x1="21" y1="3" x2="14" y2="10"></line>
+          <line x1="3" y1="21" x2="10" y2="14"></line>
+        </svg>
+        <span id="callZoomBtnText">0.75x Wide</span>
       </button>
       <div class="active-call-badge">
         <span class="call-live-dot"></span>
@@ -1559,11 +1569,11 @@
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=35.0"></script>
-  <script src="/js/emoji.js?v=35.0"></script>
-  <script src="/js/media.js?v=35.0"></script>
-  <script src="/js/socket.js?v=35.0"></script>
-  <script src="/js/call.js?v=35.0"></script>
-  <script src="/js/chat.js?v=35.0"></script>
+  <script src="/js/ui.js?v=36.0"></script>
+  <script src="/js/emoji.js?v=36.0"></script>
+  <script src="/js/media.js?v=36.0"></script>
+  <script src="/js/socket.js?v=36.0"></script>
+  <script src="/js/call.js?v=36.0"></script>
+  <script src="/js/chat.js?v=36.0"></script>
 </body>
 </html>

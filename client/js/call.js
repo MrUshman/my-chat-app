@@ -367,6 +367,7 @@
   const callVideoContainer = document.getElementById('callVideoContainer');
   const callAudioContainer = document.getElementById('callAudioContainer');
   const remoteVideoPlayer = document.getElementById('remoteVideoPlayer');
+  const remoteVideoPlayerBg = document.getElementById('remoteVideoPlayerBg');
   const localVideoPlayer = document.getElementById('localVideoPlayer');
   const localVideoWrapper = document.getElementById('localVideoWrapper');
   const remoteAudioPlayer = document.getElementById('remoteAudioPlayer');
@@ -385,7 +386,7 @@
   let isSpeakerMode = true; // WhatsApp style speaker mode (defaults to loudspeaker)
   let isCallMinimized = false;
   let isVideoSwapped = false;
-  let isVideoZoomCover = false; // Default: 0.75x Wide View (full view, no cropping) // WhatsApp tap-to-swap: false = remote fullscreen / local pip; true = local fullscreen / remote pip
+  let isVideoZoomCover = false; // Default: 0.75x Wide View (full view, no cropping, ambient blur background)
 
   const callMinimizeBtn = document.getElementById('callMinimizeBtn');
   const callSystemPipBtn = document.getElementById('callSystemPipBtn');
@@ -1127,7 +1128,7 @@
     if (callType !== 'video') return;
 
     if (!isVideoSwapped) {
-      // Normal Mode: Partner is Full Screen with unified Audio+Video for Lip-Sync (WhatsApp Fullscreen Cover)
+      // Normal Mode: Partner is Full Screen with unified Audio+Video for Lip-Sync
       if (remoteVideoPlayer) {
         if (remoteStream && remoteVideoPlayer.srcObject !== remoteStream) {
           remoteVideoPlayer.srcObject = remoteStream;
@@ -1136,9 +1137,21 @@
         remoteVideoPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.remove('mirror');
-        remoteVideoPlayer.style.objectFit = 'cover';
+        remoteVideoPlayer.style.objectFit = isVideoZoomCover ? 'cover' : 'contain';
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
+        }
+      }
+
+      // Background ambient blur video (fills entire screen, zero black bars)
+      if (remoteVideoPlayerBg) {
+        if (remoteStream && remoteVideoPlayerBg.srcObject !== remoteStream) {
+          remoteVideoPlayerBg.srcObject = remoteStream;
+        }
+        remoteVideoPlayerBg.muted = true;
+        remoteVideoPlayerBg.playsInline = true;
+        if (remoteVideoPlayerBg.paused) {
+          remoteVideoPlayerBg.play().catch(() => {});
         }
       }
 
@@ -1170,9 +1183,20 @@
         remoteVideoPlayer.muted = true;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
-        remoteVideoPlayer.style.objectFit = 'cover';
+        remoteVideoPlayer.style.objectFit = isVideoZoomCover ? 'cover' : 'contain';
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
+        }
+      }
+
+      if (remoteVideoPlayerBg) {
+        if (localStream && remoteVideoPlayerBg.srcObject !== localStream) {
+          remoteVideoPlayerBg.srcObject = localStream;
+        }
+        remoteVideoPlayerBg.muted = true;
+        remoteVideoPlayerBg.playsInline = true;
+        if (remoteVideoPlayerBg.paused) {
+          remoteVideoPlayerBg.play().catch(() => {});
         }
       }
 
@@ -1532,13 +1556,20 @@
 
   function applyVideoZoomMode() {
     if (remoteVideoPlayer) {
-      remoteVideoPlayer.style.objectFit = 'cover';
+      remoteVideoPlayer.style.objectFit = isVideoZoomCover ? 'cover' : 'contain';
+    }
+    const zoomText = document.getElementById('callZoomBtnText');
+    if (zoomText) {
+      zoomText.textContent = isVideoZoomCover ? '1x Fill' : '0.75x Wide';
     }
   }
 
   function toggleVideoZoomMode() {
     isVideoZoomCover = !isVideoZoomCover;
     applyVideoZoomMode();
+    if (window.UI?.showToast) {
+      window.UI.showToast(isVideoZoomCover ? '1x Fill Screen' : '0.75x Wide View (Full)', 'info', 1300);
+    }
   }
 
   function cleanupCallState() {
@@ -1603,6 +1634,7 @@
 
     if (localVideoPlayer) localVideoPlayer.srcObject = null;
     if (remoteVideoPlayer) remoteVideoPlayer.srcObject = null;
+    if (remoteVideoPlayerBg) remoteVideoPlayerBg.srcObject = null;
     if (remoteAudioPlayer) remoteAudioPlayer.srcObject = null;
     if (floatingPipVideo) floatingPipVideo.srcObject = null;
 
@@ -2222,9 +2254,22 @@
       callZoomToggleBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleVideoZoomMode();
-        if (window.UI?.showToast) {
-          window.UI.showToast(isVideoZoomCover ? 'Fill Screen (1x)' : 'Full View (0.75x Wide)', 'info', 1200);
+      });
+    }
+
+    // Double-tap on video screen to toggle Wide (0.75x) / Fill (1x)
+    let lastVideoTapTime = 0;
+    if (callVideoContainer) {
+      callVideoContainer.addEventListener('touchend', (e) => {
+        if (e.target.closest('#localVideoWrapper') || e.target.closest('.active-call-controls-bar') || e.target.closest('.active-call-topbar')) {
+          return;
         }
+        const now = Date.now();
+        if (now - lastVideoTapTime < 320 && now - lastVideoTapTime > 60) {
+          toggleVideoZoomMode();
+          e.preventDefault();
+        }
+        lastVideoTapTime = now;
       });
     }
 
