@@ -28,19 +28,17 @@
     try {
       const lines = sdp.split(/\r?\n/);
 
-      // 1. Audio Optimization: Enable Opus In-Band FEC & 64kbps HD Voice
+      // 1. Audio Optimization: Opus HD Voice, Constant Bitrate (CBR), In-Band FEC, Zero DTX Gating
       const opusRtpLine = lines.find((l) => /^a=rtpmap:(\d+)\s+opus\/48000/i.test(l));
       if (opusRtpLine) {
         const pt = opusRtpLine.match(/^a=rtpmap:(\d+)\s+opus\/48000/i)[1];
         const fmtpIndex = lines.findIndex((l) => l.startsWith(`a=fmtp:${pt}`));
-        const opusExtra = 'useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=64000;cbr=0';
+        const opusParams = 'minptime=10;ptime=20;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=48000;cbr=1;usedtx=0';
         if (fmtpIndex !== -1) {
-          if (!lines[fmtpIndex].includes('maxaveragebitrate=')) {
-            lines[fmtpIndex] += ';' + opusExtra;
-          }
+          lines[fmtpIndex] = `a=fmtp:${pt} ${opusParams}`;
         } else {
           const rtpIndex = lines.indexOf(opusRtpLine);
-          lines.splice(rtpIndex + 1, 0, `a=fmtp:${pt} ${opusExtra}`);
+          lines.splice(rtpIndex + 1, 0, `a=fmtp:${pt} ${opusParams}`);
         }
       }
 
@@ -140,9 +138,12 @@
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}];
             }
-            params.encodings[0].maxBitrate = 64000;
+            params.encodings[0].maxBitrate = 48000;
             params.encodings[0].networkPriority = 'high';
             params.encodings[0].priority = 'high';
+            if ('dtx' in params.encodings[0]) {
+              params.encodings[0].dtx = 'disabled';
+            }
             await sender.setParameters(params);
           } catch (e) {
             console.warn('Sender audio tuning notice:', e.message);
@@ -506,9 +507,16 @@
   // ─── Local Media Acquisition (Adaptive HD with Graceful Fallback) ─────────
   async function acquireLocalStream(type) {
     const audioConstraints = {
-      echoCancellation: { ideal: true },
-      noiseSuppression: { ideal: true },
-      autoGainControl: { ideal: true },
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 48000,
+      googEchoCancellation: true,
+      googAutoGainControl: true,
+      googNoiseSuppression: true,
+      googHighpassFilter: true,
+      googTypingNoiseDetection: false,
     };
 
     // Natural wide sensor resolution (1280x720) captures full wide-angle field of view without digital crop
@@ -525,6 +533,12 @@
         video: type === 'video' ? videoConstraints : false,
       });
       localStream = stream;
+
+      // Speech content hint for optimal vocal clarity without audio clipping or gating
+      const aTrack = stream.getAudioTracks()[0];
+      if (aTrack && 'contentHint' in aTrack) {
+        aTrack.contentHint = 'speech';
+      }
 
       // Set motion hint and request widest zoom angle (0.75x–1.0x) supported by camera hardware
       const vTrack = stream.getVideoTracks()[0];
@@ -569,6 +583,10 @@
             },
           });
           localStream = fallbackStream;
+          const fbATrack = fallbackStream.getAudioTracks()[0];
+          if (fbATrack && 'contentHint' in fbATrack) {
+            fbATrack.contentHint = 'speech';
+          }
           const fbVTrack = fallbackStream.getVideoTracks()[0];
           if (fbVTrack && 'contentHint' in fbVTrack) {
             fbVTrack.contentHint = 'motion';
@@ -650,9 +668,14 @@
       }
     };
 
-    // Remote Track handler — Cleanly isolates audio & video streams, triggers instant disconnect on track end
+    // Remote Track handler — Unified MediaStream for native WebRTC Lip-Sync, 40ms jitter buffer
     pc.ontrack = (event) => {
       console.log('📡 Remote track received:', event.track.kind);
+      if (event.receiver && 'playoutDelayHint' in event.receiver) {
+        try {
+          event.receiver.playoutDelayHint = 0.04;
+        } catch (_) {}
+      }
       if (!remoteStream) {
         remoteStream = new MediaStream();
       }
@@ -682,14 +705,19 @@
           remoteAudioStream.addTrack(event.track);
         }
 
-        if (remoteAudioPlayer) {
-          if (remoteAudioPlayer.srcObject !== remoteAudioStream) {
-            remoteAudioPlayer.srcObject = remoteAudioStream;
+        if (callType === 'audio') {
+          if (remoteAudioPlayer) {
+            if (remoteAudioPlayer.srcObject !== remoteStream) {
+              remoteAudioPlayer.srcObject = remoteStream;
+            }
+            remoteAudioPlayer.muted = false;
+            remoteAudioPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
+            remoteAudioPlayer.playsInline = true;
+            remoteAudioPlayer.play().catch((err) => console.warn('remoteAudioPlayer play() failed:', err));
           }
-          remoteAudioPlayer.muted = false;
-          remoteAudioPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
-          remoteAudioPlayer.playsInline = true;
-          remoteAudioPlayer.play().catch((err) => console.warn('remoteAudioPlayer play() failed:', err));
+        } else {
+          // In video calls, sync video with audio directly via remoteVideoPlayer for A/V Lip-Sync
+          applyVideoStreamsToPlayers();
         }
       } else if (event.track.kind === 'video') {
         if (!remoteVideoStream) {
@@ -1044,26 +1072,18 @@
         callSystemPipBtn.style.display = canPiP ? 'inline-flex' : 'none';
       }
       applyVideoStreamsToPlayers();
-
-      if (remoteAudioPlayer && remoteAudioStream) {
-        if (remoteAudioPlayer.srcObject !== remoteAudioStream) {
-          remoteAudioPlayer.srcObject = remoteAudioStream;
-        }
-        remoteAudioPlayer.muted = false;
-        remoteAudioPlayer.playsInline = true;
-        remoteAudioPlayer.play().catch(() => {});
-      }
     } else {
       if (callVideoContainer) callVideoContainer.style.display = 'none';
       if (callAudioContainer) callAudioContainer.style.display = 'flex';
       if (callFlipCameraBtn) callFlipCameraBtn.style.display = 'none';
       if (callToggleVideoBtn) callToggleVideoBtn.style.display = 'none';
       if (callSystemPipBtn) callSystemPipBtn.style.display = 'none';
-      if (remoteAudioPlayer && remoteAudioStream) {
-        if (remoteAudioPlayer.srcObject !== remoteAudioStream) {
-          remoteAudioPlayer.srcObject = remoteAudioStream;
+      if (remoteAudioPlayer && remoteStream) {
+        if (remoteAudioPlayer.srcObject !== remoteStream) {
+          remoteAudioPlayer.srcObject = remoteStream;
         }
         remoteAudioPlayer.muted = false;
+        remoteAudioPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
         remoteAudioPlayer.playsInline = true;
         remoteAudioPlayer.play().catch(() => {});
       }
@@ -1097,38 +1117,83 @@
   function applyVideoStreamsToPlayers() {
     if (callType !== 'video') return;
 
-    const fullStream = !isVideoSwapped ? (remoteVideoStream || remoteStream) : localStream;
-    const pipStream = !isVideoSwapped ? localStream : (remoteVideoStream || remoteStream);
-    const isFullMirror = !isVideoSwapped ? false : currentFacingMode === 'user';
-    const isPipMirror = !isVideoSwapped ? currentFacingMode === 'user' : false;
+    if (!isVideoSwapped) {
+      // Normal Mode: Partner is Full Screen with unified Audio+Video for Lip-Sync
+      if (remoteVideoPlayer) {
+        if (remoteStream && remoteVideoPlayer.srcObject !== remoteStream) {
+          remoteVideoPlayer.srcObject = remoteStream;
+        }
+        remoteVideoPlayer.muted = false;
+        remoteVideoPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
+        remoteVideoPlayer.playsInline = true;
+        remoteVideoPlayer.classList.remove('mirror');
+        if (remoteVideoPlayer.paused) {
+          remoteVideoPlayer.play().catch(() => {});
+        }
+      }
 
-    if (remoteVideoPlayer) {
-      if (fullStream && remoteVideoPlayer.srcObject !== fullStream) {
-        remoteVideoPlayer.srcObject = fullStream;
+      // Local camera in PiP (muted)
+      if (localVideoPlayer) {
+        if (localStream && localVideoPlayer.srcObject !== localStream) {
+          localVideoPlayer.srcObject = localStream;
+        }
+        localVideoPlayer.muted = true;
+        localVideoPlayer.playsInline = true;
+        localVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
+        if (localVideoPlayer.paused) {
+          localVideoPlayer.play().catch(() => {});
+        }
       }
-      remoteVideoPlayer.muted = true;
-      remoteVideoPlayer.playsInline = true;
-      remoteVideoPlayer.classList.toggle('mirror', isFullMirror);
-      if (remoteVideoPlayer.paused) {
-        remoteVideoPlayer.play().catch(() => {});
-      }
-    }
 
-    if (localVideoPlayer) {
-      if (pipStream && localVideoPlayer.srcObject !== pipStream) {
-        localVideoPlayer.srcObject = pipStream;
+      // Standalone audio player is paused/muted to prevent double-audio
+      if (remoteAudioPlayer) {
+        remoteAudioPlayer.muted = true;
+        remoteAudioPlayer.pause();
       }
-      localVideoPlayer.muted = true;
-      localVideoPlayer.playsInline = true;
-      localVideoPlayer.classList.toggle('mirror', isPipMirror);
-      if (localVideoPlayer.paused) {
-        localVideoPlayer.play().catch(() => {});
+    } else {
+      // Swapped Mode: Local camera is Full Screen (muted)
+      if (remoteVideoPlayer) {
+        if (localStream && remoteVideoPlayer.srcObject !== localStream) {
+          remoteVideoPlayer.srcObject = localStream;
+        }
+        remoteVideoPlayer.muted = true;
+        remoteVideoPlayer.playsInline = true;
+        remoteVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
+        if (remoteVideoPlayer.paused) {
+          remoteVideoPlayer.play().catch(() => {});
+        }
+      }
+
+      // Partner camera in PiP (muted)
+      if (localVideoPlayer) {
+        if (remoteStream && localVideoPlayer.srcObject !== remoteStream) {
+          localVideoPlayer.srcObject = remoteStream;
+        }
+        localVideoPlayer.muted = true;
+        localVideoPlayer.playsInline = true;
+        localVideoPlayer.classList.remove('mirror');
+        if (localVideoPlayer.paused) {
+          localVideoPlayer.play().catch(() => {});
+        }
+      }
+
+      // Partner audio routed via remoteAudioPlayer
+      if (remoteAudioPlayer && remoteStream) {
+        if (remoteAudioPlayer.srcObject !== remoteStream) {
+          remoteAudioPlayer.srcObject = remoteStream;
+        }
+        remoteAudioPlayer.muted = false;
+        remoteAudioPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
+        remoteAudioPlayer.playsInline = true;
+        if (remoteAudioPlayer.paused) {
+          remoteAudioPlayer.play().catch(() => {});
+        }
       }
     }
 
     // If floating PiP is active, ensure it displays remote video
     if (floatingCallPip && floatingCallPip.style.display !== 'none' && floatingPipVideo) {
-      const pipTarget = remoteVideoStream || remoteStream;
+      const pipTarget = remoteStream;
       if (pipTarget && floatingPipVideo.srcObject !== pipTarget) {
         floatingPipVideo.srcObject = pipTarget;
       }
@@ -1332,8 +1397,12 @@
     if (callSpeakerOffIcon) callSpeakerOffIcon.style.display = isSpeakerMode ? 'none' : 'block';
     if (callSpeakerLabel) callSpeakerLabel.textContent = isSpeakerMode ? 'Speaker' : 'Earpiece';
 
+    const callVol = isSpeakerMode ? 1.0 : 0.45;
     if (remoteAudioPlayer) {
-      remoteAudioPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
+      remoteAudioPlayer.volume = callVol;
+    }
+    if (remoteVideoPlayer) {
+      remoteVideoPlayer.volume = callVol;
     }
   }
 
@@ -2190,15 +2259,10 @@
       }
     });
 
-    // Video Playback Watchdog: Instantly auto-resume video if browser momentarily pauses or stalls it
+    // Video Playback Watchdog: Auto-resume video if browser pauses it
     if (remoteVideoPlayer) {
       remoteVideoPlayer.addEventListener('pause', () => {
-        if (callState === 'connected' && callType === 'video' && remoteVideoPlayer.paused) {
-          remoteVideoPlayer.play().catch(() => {});
-        }
-      });
-      remoteVideoPlayer.addEventListener('waiting', () => {
-        if (callState === 'connected' && callType === 'video') {
+        if (callState === 'connected' && callType === 'video' && remoteVideoPlayer.paused && !isVideoSwapped) {
           remoteVideoPlayer.play().catch(() => {});
         }
       });
@@ -2213,15 +2277,10 @@
       });
     }
 
-    // Audio Playback Watchdog: Auto-resume audio if browser stalls or pauses it
+    // Audio Playback Watchdog: Auto-resume audio if browser pauses it
     if (remoteAudioPlayer) {
       remoteAudioPlayer.addEventListener('pause', () => {
-        if (callState === 'connected' && remoteAudioPlayer.paused) {
-          remoteAudioPlayer.play().catch(() => {});
-        }
-      });
-      remoteAudioPlayer.addEventListener('waiting', () => {
-        if (callState === 'connected') {
+        if (callState === 'connected' && remoteAudioPlayer.paused && (callType === 'audio' || isVideoSwapped)) {
           remoteAudioPlayer.play().catch(() => {});
         }
       });
@@ -2248,7 +2307,7 @@
       if (bgKeepAliveAudio && bgKeepAliveAudio.paused) {
         bgKeepAliveAudio.play().catch(() => {});
       }
-      if (remoteAudioPlayer && remoteAudioPlayer.paused) {
+      if (remoteAudioPlayer && remoteAudioPlayer.paused && (callType === 'audio' || isVideoSwapped)) {
         remoteAudioPlayer.play().catch(() => {});
       }
 
@@ -2281,7 +2340,7 @@
           remoteVideoPlayer.play().catch(() => {});
         }
       }
-      if (remoteAudioPlayer && remoteAudioPlayer.paused) {
+      if (remoteAudioPlayer && remoteAudioPlayer.paused && (callType === 'audio' || isVideoSwapped)) {
         remoteAudioPlayer.play().catch(() => {});
       }
     }
