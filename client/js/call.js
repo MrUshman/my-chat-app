@@ -1041,7 +1041,6 @@
     // Reset minimized state and banner/floating PiP
     isCallMinimized = false;
     isVideoSwapped = false;
-    isVideoZoomCover = false;
     if (ongoingCallBanner) ongoingCallBanner.style.display = 'none';
     if (floatingCallPip) floatingCallPip.style.display = 'none';
 
