@@ -44,29 +44,60 @@
         }
       }
 
-      // 2. Video Optimization: Prioritize H.264 & Add Bandwidth Hints
+      // 2. Video Optimization: High Bitrate (3.5 Mbps), Instant Warmup & Clean Motion
       if (isVideo) {
         const mVideoIndex = lines.findIndex((l) => l.startsWith('m=video '));
         if (mVideoIndex !== -1) {
-          const h264Payloads = [];
+          const preferredPayloads = [];
+          // Collect VP8 payloads first (superior software/hardware rate control, crisp face detail)
+          lines.forEach((l) => {
+            const m = l.match(/^a=rtpmap:(\d+)\s+VP8\/90000/i);
+            if (m) preferredPayloads.push(m[1]);
+          });
+          // Then collect H264 payloads
           lines.forEach((l) => {
             const m = l.match(/^a=rtpmap:(\d+)\s+H264\/90000/i);
-            if (m) h264Payloads.push(m[1]);
+            if (m && !preferredPayloads.includes(m[1])) preferredPayloads.push(m[1]);
           });
 
-          if (h264Payloads.length > 0) {
+          if (preferredPayloads.length > 0) {
             const parts = lines[mVideoIndex].split(' ');
             if (parts.length > 3) {
               const prefix = parts.slice(0, 3);
               const pts = parts.slice(3);
-              const nonH264 = pts.filter((p) => !h264Payloads.includes(p));
-              lines[mVideoIndex] = [...prefix, ...h264Payloads, ...nonH264].join(' ');
+              const remaining = pts.filter((p) => !preferredPayloads.includes(p));
+              lines[mVideoIndex] = [...prefix, ...preferredPayloads, ...remaining].join(' ');
             }
           }
 
-          const hasBandwidth = lines.slice(mVideoIndex, mVideoIndex + 4).some((l) => l.startsWith('b=AS:'));
-          if (!hasBandwidth) {
-            lines.splice(mVideoIndex + 1, 0, 'b=AS:1200', 'b=TIAS:1200000');
+          // Inject Google WebRTC video bitrate hints so the call starts crisp immediately
+          // (x-google-start-bitrate=2500) and never drops into muddy pixelation (x-google-min-bitrate=1000)
+          const videoFmtpExtra = 'x-google-min-bitrate=1000;x-google-start-bitrate=2500;x-google-max-bitrate=3500';
+          preferredPayloads.forEach((pt) => {
+            const fmtpIdx = lines.findIndex((l) => l.startsWith(`a=fmtp:${pt} `) || l === `a=fmtp:${pt}`);
+            if (fmtpIdx !== -1) {
+              if (!lines[fmtpIdx].includes('x-google-start-bitrate')) {
+                lines[fmtpIdx] += ';' + videoFmtpExtra;
+              }
+            } else {
+              const rtpIdx = lines.findIndex((l) => l.startsWith(`a=rtpmap:${pt} `));
+              if (rtpIdx !== -1) {
+                lines.splice(rtpIdx + 1, 0, `a=fmtp:${pt} ${videoFmtpExtra}`);
+              }
+            }
+          });
+
+          // Set 3.5 Mbps bandwidth headroom (removes previous 1.2 Mbps bottleneck that caused motion blur)
+          const asLineIdx = lines.findIndex((l, idx) => idx > mVideoIndex && idx < mVideoIndex + 6 && l.startsWith('b=AS:'));
+          if (asLineIdx !== -1) {
+            lines[asLineIdx] = 'b=AS:3500';
+          }
+          const tiasLineIdx = lines.findIndex((l, idx) => idx > mVideoIndex && idx < mVideoIndex + 6 && l.startsWith('b=TIAS:'));
+          if (tiasLineIdx !== -1) {
+            lines[tiasLineIdx] = 'b=TIAS:3500000';
+          }
+          if (asLineIdx === -1 && tiasLineIdx === -1) {
+            lines.splice(mVideoIndex + 1, 0, 'b=AS:3500', 'b=TIAS:3500000');
           }
         }
       }
@@ -79,7 +110,7 @@
   }
 
   // ─── RTCRtpSender Dynamic Bitrate & Adaptive Framerate ──────────────────────
-  async function tuneSenderParameters(pc, type, targetVideoBitrate = 1200000) {
+  async function tuneSenderParameters(pc, type, targetVideoBitrate = 2500000) {
     if (!pc || !pc.getSenders) return;
     try {
       const senders = pc.getSenders();
@@ -93,9 +124,13 @@
               params.encodings = [{}];
             }
             params.encodings[0].maxBitrate = targetVideoBitrate;
-            params.encodings[0].maxFramerate = 24;
+            params.encodings[0].minBitrate = 800000;
+            params.encodings[0].maxFramerate = 30;
             params.encodings[0].scaleResolutionDownBy = 1.0;
-            params.degradationPreference = 'maintain-resolution';
+            params.encodings[0].networkPriority = 'high';
+            params.encodings[0].priority = 'high';
+            // Use 'balanced' so motion doesn't cause aggressive quantization blur (macroblocking)
+            params.degradationPreference = 'balanced';
             await sender.setParameters(params);
           } catch (e) {
             console.warn('Sender video tuning notice:', e.message);
@@ -107,6 +142,8 @@
               params.encodings = [{}];
             }
             params.encodings[0].maxBitrate = 64000;
+            params.encodings[0].networkPriority = 'high';
+            params.encodings[0].priority = 'high';
             await sender.setParameters(params);
           } catch (e) {
             console.warn('Sender audio tuning notice:', e.message);
@@ -473,11 +510,16 @@
       autoGainControl: { ideal: true },
     };
 
+    // Calculate native orientation for mobile (portrait sensor is height > width)
+    const isPortrait = window.innerHeight > window.innerWidth;
+    const targetWidth = isPortrait ? 720 : 1280;
+    const targetHeight = isPortrait ? 1280 : 720;
+
     const videoConstraints = {
       facingMode: currentFacingMode,
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      frameRate: { ideal: 24, max: 30 },
+      width: { ideal: targetWidth, max: isPortrait ? 1080 : 1920 },
+      height: { ideal: targetHeight, max: isPortrait ? 1920 : 1080 },
+      frameRate: { ideal: 30, min: 20, max: 30 },
     };
 
     try {
@@ -486,6 +528,12 @@
         video: type === 'video' ? videoConstraints : false,
       });
       localStream = stream;
+
+      // Hint to WebRTC encoder: optimize for motion so body movement doesn't blur
+      const vTrack = stream.getVideoTracks()[0];
+      if (vTrack && 'contentHint' in vTrack) {
+        vTrack.contentHint = 'motion';
+      }
 
       // Bind to local video player if video call
       if (type === 'video' && localVideoPlayer) {
@@ -507,9 +555,18 @@
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
             audio: audioConstraints,
-            video: { facingMode: currentFacingMode },
+            video: {
+              facingMode: currentFacingMode,
+              width: { ideal: isPortrait ? 720 : 1280 },
+              height: { ideal: isPortrait ? 1280 : 720 },
+              frameRate: { ideal: 30, max: 30 },
+            },
           });
           localStream = fallbackStream;
+          const fbVTrack = fallbackStream.getVideoTracks()[0];
+          if (fbVTrack && 'contentHint' in fbVTrack) {
+            fbVTrack.contentHint = 'motion';
+          }
           if (localVideoPlayer) {
             localVideoPlayer.srcObject = fallbackStream;
             localVideoPlayer.muted = true;
@@ -557,7 +614,7 @@
       });
     }
 
-    // Set hardware H.264 codec preference if browser supports RTCRtpTransceiver.setCodecPreferences
+    // Set video codec preference (VP8 for razor-sharp edge & motion clarity, then H.264)
     try {
       const videoTransceiver = pc.getTransceivers().find(
         (t) => t.sender && t.sender.track && t.sender.track.kind === 'video'
@@ -565,10 +622,13 @@
       if (videoTransceiver && typeof RTCRtpSender.getCapabilities === 'function') {
         const capabilities = RTCRtpSender.getCapabilities('video');
         if (capabilities && capabilities.codecs) {
+          const vp8Codecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/vp8');
           const h264Codecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/h264');
-          const otherCodecs = capabilities.codecs.filter((c) => c.mimeType.toLowerCase() !== 'video/h264');
-          if (h264Codecs.length > 0 && typeof videoTransceiver.setCodecPreferences === 'function') {
-            videoTransceiver.setCodecPreferences([...h264Codecs, ...otherCodecs]);
+          const otherCodecs = capabilities.codecs.filter(
+            (c) => c.mimeType.toLowerCase() !== 'video/vp8' && c.mimeType.toLowerCase() !== 'video/h264'
+          );
+          if (typeof videoTransceiver.setCodecPreferences === 'function') {
+            videoTransceiver.setCodecPreferences([...vp8Codecs, ...h264Codecs, ...otherCodecs]);
           }
         }
       }
@@ -1288,15 +1348,23 @@
     try {
       currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
 
+      const isPortrait = window.innerHeight > window.innerWidth;
+      const targetWidth = isPortrait ? 720 : 1280;
+      const targetHeight = isPortrait ? 1280 : 720;
+
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: currentFacingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: targetWidth, max: isPortrait ? 1080 : 1920 },
+          height: { ideal: targetHeight, max: isPortrait ? 1920 : 1080 },
+          frameRate: { ideal: 30, min: 20, max: 30 },
         },
       });
 
       const newVideoTrack = newStream.getVideoTracks()[0];
+      if (newVideoTrack && 'contentHint' in newVideoTrack) {
+        newVideoTrack.contentHint = 'motion';
+      }
 
       // Replace track on sender
       const senders = peerConnection.getSenders();
@@ -1727,12 +1795,15 @@
 
         if (deltaSent > 25) {
           const lossRate = Math.max(0, deltaLost) / (deltaSent + Math.max(0, deltaLost));
-          if (lossRate > 0.07 || currentRtt > 380) {
-            // Poor network: adaptively reduce video bitrate to 550 kbps while keeping resolution maintained
-            tuneSenderParameters(pc, callType, 550000);
-          } else if (lossRate < 0.02 && currentRtt < 160) {
-            // Excellent network: restore full HD 1.2 Mbps video
-            tuneSenderParameters(pc, callType, 1200000);
+          if (lossRate > 0.12 || currentRtt > 450) {
+            // High network congestion: safe floor at 1.0 Mbps (never drop to 550k blurry mud)
+            tuneSenderParameters(pc, callType, 1000000);
+          } else if (lossRate > 0.05 || currentRtt > 320) {
+            // Moderate congestion: smooth 1.8 Mbps
+            tuneSenderParameters(pc, callType, 1800000);
+          } else if (lossRate <= 0.03 && currentRtt <= 300) {
+            // Good to excellent mobile network: full crisp HD 2.8 Mbps
+            tuneSenderParameters(pc, callType, 2800000);
           }
         }
       } catch (e) {}

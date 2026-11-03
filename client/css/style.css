@@ -1083,7 +1083,7 @@ body.motion-bubbles::before {
   object-fit: cover !important;
   border-radius: 12px !important;
   display: block !important;
-  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
   image-rendering: auto;
 }
 
@@ -4127,7 +4127,7 @@ body.motion-minimal .chat-messages {
   -webkit-transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
   will-change: transform;
 }
 
@@ -4174,7 +4174,7 @@ body.motion-minimal .chat-messages {
   -webkit-transform: scaleX(-1) translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
   will-change: transform;
 }
 
