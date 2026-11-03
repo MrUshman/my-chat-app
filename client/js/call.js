@@ -47,15 +47,21 @@
         const mVideoIndex = lines.findIndex((l) => l.startsWith('m=video '));
         if (mVideoIndex !== -1) {
           const preferredPayloads = [];
-          // 1. Collect Hardware H264 payloads FIRST (dedicated GPU/VPU hardware block = 0% CPU stutter!)
-          lines.forEach((l) => {
-            const m = l.match(/^a=rtpmap:(\d+)\s+H264\/90000/i);
-            if (m) preferredPayloads.push(m[1]);
-          });
-          // 2. Collect VP8 payloads as reliable fallback
+          // 1. Prefer VP8 for rock-solid zero-packet-drop mobile streaming without timestamp stutter
           lines.forEach((l) => {
             const m = l.match(/^a=rtpmap:(\d+)\s+VP8\/90000/i);
             if (m && !preferredPayloads.includes(m[1])) preferredPayloads.push(m[1]);
+          });
+          // 2. Hardware H264 with packetization-mode=1
+          lines.forEach((l) => {
+            const m = l.match(/^a=rtpmap:(\d+)\s+H264\/90000/i);
+            if (m) {
+              const pt = m[1];
+              const fmtp = lines.find((line) => line.startsWith(`a=fmtp:${pt}`));
+              if (!fmtp || fmtp.includes('packetization-mode=1')) {
+                if (!preferredPayloads.includes(pt)) preferredPayloads.push(pt);
+              }
+            }
           });
 
           if (preferredPayloads.length > 0) {
@@ -68,9 +74,9 @@
             }
           }
 
-          // Inject optimal Google WebRTC bitrate parameters for stutter-free 720p HD:
-          // Min 600 kbps, Start 1.4 Mbps, Max 2.0 Mbps
-          const videoFmtpExtra = 'x-google-min-bitrate=600;x-google-start-bitrate=1400;x-google-max-bitrate=2000';
+          // Inject optimal Google WebRTC bitrate parameters:
+          // Min 200 kbps (prevents queue buildup on signal dips), Start 1.0 Mbps, Max 2.2 Mbps (crisp HD)
+          const videoFmtpExtra = 'x-google-min-bitrate=200;x-google-start-bitrate=1000;x-google-max-bitrate=2200';
           preferredPayloads.forEach((pt) => {
             const fmtpIdx = lines.findIndex((l) => l.startsWith(`a=fmtp:${pt} `) || l === `a=fmtp:${pt}`);
             if (fmtpIdx !== -1) {
@@ -108,7 +114,7 @@
   }
 
   // ─── RTCRtpSender Dynamic Bitrate & Adaptive Framerate ──────────────────────
-  async function tuneSenderParameters(pc, type, targetVideoBitrate = 1600000) {
+  async function tuneSenderParameters(pc, type, targetVideoBitrate = 1800000) {
     if (!pc || !pc.getSenders) return;
     try {
       const senders = pc.getSenders();
@@ -116,23 +122,28 @@
         if (!sender.track) continue;
 
         if (sender.track.kind === 'video' && type === 'video') {
+          // Guard: avoid hardware encoder resets if parameters already configured
+          if (sender._lastBitrate === targetVideoBitrate) continue;
           try {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}];
             }
             params.encodings[0].maxBitrate = targetVideoBitrate;
-            params.encodings[0].minBitrate = 500000;
+            params.encodings[0].minBitrate = 200000;
             params.encodings[0].maxFramerate = 30;
             params.encodings[0].scaleResolutionDownBy = 1.0;
             params.encodings[0].networkPriority = 'high';
             params.encodings[0].priority = 'high';
-            params.degradationPreference = 'balanced';
+            params.degradationPreference = 'maintain-framerate';
             await sender.setParameters(params);
+            sender._lastBitrate = targetVideoBitrate;
           } catch (e) {
             console.warn('Sender video tuning notice:', e.message);
           }
         } else if (sender.track.kind === 'audio') {
+          // Tune audio sender ONLY ONCE per call to eliminate stutter/audio dropouts
+          if (sender._audioTuned) continue;
           try {
             const params = sender.getParameters();
             if (!params.encodings || params.encodings.length === 0) {
@@ -145,6 +156,7 @@
               params.encodings[0].dtx = 'disabled';
             }
             await sender.setParameters(params);
+            sender._audioTuned = true;
           } catch (e) {
             console.warn('Sender audio tuning notice:', e.message);
           }
@@ -504,6 +516,18 @@
     }
   }
 
+  // Helper: WhatsApp-style camera constraints matching mobile portrait orientation
+  function getVideoConstraints() {
+    const isPortrait = window.innerHeight >= window.innerWidth;
+    return {
+      facingMode: currentFacingMode,
+      width: { ideal: isPortrait ? 720 : 1280 },
+      height: { ideal: isPortrait ? 1280 : 720 },
+      aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
+      frameRate: { ideal: 30, max: 30 },
+    };
+  }
+
   // ─── Local Media Acquisition (Adaptive HD with Graceful Fallback) ─────────
   async function acquireLocalStream(type) {
     const audioConstraints = {
@@ -519,13 +543,8 @@
       googTypingNoiseDetection: false,
     };
 
-    // Natural wide sensor resolution (1280x720) captures full wide-angle field of view without digital crop
-    const videoConstraints = {
-      facingMode: currentFacingMode,
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      frameRate: { ideal: 30, max: 30 },
-    };
+    // WhatsApp-style portrait aspect ratio (720x1280 9:16) on mobile, landscape (1280x720 16:9) on desktop
+    const videoConstraints = getVideoConstraints();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -575,12 +594,7 @@
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({
             audio: audioConstraints,
-            video: {
-              facingMode: currentFacingMode,
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              frameRate: { ideal: 30, max: 30 },
-            },
+            video: getVideoConstraints(),
           });
           localStream = fallbackStream;
           const fbATrack = fallbackStream.getAudioTracks()[0];
@@ -668,14 +682,9 @@
       }
     };
 
-    // Remote Track handler — Unified MediaStream for native WebRTC Lip-Sync, 40ms jitter buffer
+    // Remote Track handler — Unified MediaStream for native WebRTC Lip-Sync, adaptive jitter buffer
     pc.ontrack = (event) => {
       console.log('📡 Remote track received:', event.track.kind);
-      if (event.receiver && 'playoutDelayHint' in event.receiver) {
-        try {
-          event.receiver.playoutDelayHint = 0.04;
-        } catch (_) {}
-      }
       if (!remoteStream) {
         remoteStream = new MediaStream();
       }
@@ -1118,7 +1127,7 @@
     if (callType !== 'video') return;
 
     if (!isVideoSwapped) {
-      // Normal Mode: Partner is Full Screen with unified Audio+Video for Lip-Sync
+      // Normal Mode: Partner is Full Screen with unified Audio+Video for Lip-Sync (WhatsApp Fullscreen Cover)
       if (remoteVideoPlayer) {
         if (remoteStream && remoteVideoPlayer.srcObject !== remoteStream) {
           remoteVideoPlayer.srcObject = remoteStream;
@@ -1127,12 +1136,13 @@
         remoteVideoPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.remove('mirror');
+        remoteVideoPlayer.style.objectFit = 'cover';
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
       }
 
-      // Local camera in PiP (muted)
+      // Local camera in PiP (muted, WhatsApp rounded cover)
       if (localVideoPlayer) {
         if (localStream && localVideoPlayer.srcObject !== localStream) {
           localVideoPlayer.srcObject = localStream;
@@ -1140,6 +1150,7 @@
         localVideoPlayer.muted = true;
         localVideoPlayer.playsInline = true;
         localVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
+        localVideoPlayer.style.objectFit = 'cover';
         if (localVideoPlayer.paused) {
           localVideoPlayer.play().catch(() => {});
         }
@@ -1159,6 +1170,7 @@
         remoteVideoPlayer.muted = true;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
+        remoteVideoPlayer.style.objectFit = 'cover';
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
@@ -1172,6 +1184,7 @@
         localVideoPlayer.muted = true;
         localVideoPlayer.playsInline = true;
         localVideoPlayer.classList.remove('mirror');
+        localVideoPlayer.style.objectFit = 'cover';
         if (localVideoPlayer.paused) {
           localVideoPlayer.play().catch(() => {});
         }
@@ -1457,12 +1470,7 @@
       currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
 
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: currentFacingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30, max: 30 },
-        },
+        video: getVideoConstraints(),
       });
 
       const newVideoTrack = newStream.getVideoTracks()[0];
@@ -1524,11 +1532,7 @@
 
   function applyVideoZoomMode() {
     if (remoteVideoPlayer) {
-      remoteVideoPlayer.style.objectFit = isVideoZoomCover ? 'cover' : 'contain';
-    }
-    const zoomText = document.getElementById('callZoomBtnText');
-    if (zoomText) {
-      zoomText.textContent = isVideoZoomCover ? '1x Fill' : '0.75x Wide';
+      remoteVideoPlayer.style.objectFit = 'cover';
     }
   }
 
@@ -1928,15 +1932,12 @@
 
         if (deltaSent > 25) {
           const lossRate = Math.max(0, deltaLost) / (deltaSent + Math.max(0, deltaLost));
-          if (lossRate > 0.12 || currentRtt > 420) {
-            // High network congestion: safe 900 kbps
-            tuneSenderParameters(pc, callType, 900000);
-          } else if (lossRate > 0.05 || currentRtt > 280) {
-            // Moderate congestion: smooth 1.3 Mbps
-            tuneSenderParameters(pc, callType, 1300000);
-          } else if (lossRate <= 0.03 && currentRtt <= 260) {
-            // Optimal mobile network: 1.6 - 1.8 Mbps smooth HD
-            tuneSenderParameters(pc, callType, 1600000);
+          // Native WebRTC Google Congestion Control handles bitrate scaling seamlessly without encoder resets.
+          // Only intervene on extreme persistent congestion:
+          if (lossRate > 0.20 && currentRtt > 450) {
+            tuneSenderParameters(pc, callType, 800000);
+          } else if (lossRate <= 0.02 && currentRtt <= 200) {
+            tuneSenderParameters(pc, callType, 1800000);
           }
         }
       } catch (e) {}
