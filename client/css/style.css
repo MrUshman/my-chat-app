@@ -4121,7 +4121,7 @@ body.motion-minimal .chat-messages {
 .remote-video-player {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   background: #000000;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
@@ -4169,7 +4169,7 @@ body.motion-minimal .chat-messages {
 .local-video-player {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   transform: scaleX(-1) translateZ(0);
   -webkit-transform: scaleX(-1) translateZ(0);
   backface-visibility: hidden;
@@ -4748,3 +4748,27 @@ body.motion-minimal .chat-messages {
 
 
 
+
+.call-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.call-zoom-btn:active {
+  transform: scale(0.93);
+  background: rgba(255, 255, 255, 0.28) !important;
+}
