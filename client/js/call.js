@@ -23,7 +23,7 @@
   };
 
   // ─── WebRTC SDP Optimization for HD Audio, Sharp Video & Error Correction ───
-  function optimizeSdp(sdp, isVideo) {
+  function optimizeSdp(sdp, isVideo, isAnswer = false) {
     if (!sdp) return sdp;
     try {
       const lines = sdp.split(/\r?\n/);
@@ -42,54 +42,41 @@
         }
       }
 
-      // 2. Video Optimization: Hardware H.264 Acceleration, Smooth 1.6 Mbps (Zero CPU Stutter)
+      // 2. Video Optimization: Bandwidth Ceilings & Safe Offer Codec Ordering
       if (isVideo) {
         const mVideoIndex = lines.findIndex((l) => l.startsWith('m=video '));
         if (mVideoIndex !== -1) {
-          const preferredPayloads = [];
-          // 1. Prefer VP8 for rock-solid zero-packet-drop mobile streaming without timestamp stutter
-          lines.forEach((l) => {
-            const m = l.match(/^a=rtpmap:(\d+)\s+VP8\/90000/i);
-            if (m && !preferredPayloads.includes(m[1])) preferredPayloads.push(m[1]);
-          });
-          // 2. Hardware H264 with packetization-mode=1
-          lines.forEach((l) => {
-            const m = l.match(/^a=rtpmap:(\d+)\s+H264\/90000/i);
-            if (m) {
-              const pt = m[1];
-              const fmtp = lines.find((line) => line.startsWith(`a=fmtp:${pt}`));
-              if (!fmtp || fmtp.includes('packetization-mode=1')) {
-                if (!preferredPayloads.includes(pt)) preferredPayloads.push(pt);
+          // IMPORTANT: RFC 8829 / RFC 3264 strictly forbids re-ordering or changing
+          // payload formats on an Answer SDP! Re-ordering is only permitted on Offers:
+          if (!isAnswer) {
+            const preferredPayloads = [];
+            // Prefer VP8 for rock-solid zero-packet-drop mobile streaming without timestamp stutter
+            lines.forEach((l) => {
+              const m = l.match(/^a=rtpmap:(\d+)\s+VP8\/90000/i);
+              if (m && !preferredPayloads.includes(m[1])) preferredPayloads.push(m[1]);
+            });
+            // 2. Hardware H264 with packetization-mode=1
+            lines.forEach((l) => {
+              const m = l.match(/^a=rtpmap:(\d+)\s+H264\/90000/i);
+              if (m) {
+                const pt = m[1];
+                const fmtp = lines.find((line) => line.startsWith(`a=fmtp:${pt}`));
+                if (!fmtp || fmtp.includes('packetization-mode=1')) {
+                  if (!preferredPayloads.includes(pt)) preferredPayloads.push(pt);
+                }
               }
-            }
-          });
+            });
 
-          if (preferredPayloads.length > 0) {
-            const parts = lines[mVideoIndex].split(' ');
-            if (parts.length > 3) {
-              const prefix = parts.slice(0, 3);
-              const pts = parts.slice(3);
-              const remaining = pts.filter((p) => !preferredPayloads.includes(p));
-              lines[mVideoIndex] = [...prefix, ...preferredPayloads, ...remaining].join(' ');
+            if (preferredPayloads.length > 0) {
+              const parts = lines[mVideoIndex].split(' ');
+              if (parts.length > 3) {
+                const prefix = parts.slice(0, 3);
+                const pts = parts.slice(3);
+                const remaining = pts.filter((p) => !preferredPayloads.includes(p));
+                lines[mVideoIndex] = [...prefix, ...preferredPayloads, ...remaining].join(' ');
+              }
             }
           }
-
-          // Inject optimal Google WebRTC bitrate parameters:
-          // Min 200 kbps (prevents queue buildup on signal dips), Start 1.0 Mbps, Max 2.2 Mbps (crisp HD)
-          const videoFmtpExtra = 'x-google-min-bitrate=200;x-google-start-bitrate=1000;x-google-max-bitrate=2200';
-          preferredPayloads.forEach((pt) => {
-            const fmtpIdx = lines.findIndex((l) => l.startsWith(`a=fmtp:${pt} `) || l === `a=fmtp:${pt}`);
-            if (fmtpIdx !== -1) {
-              if (!lines[fmtpIdx].includes('x-google-start-bitrate')) {
-                lines[fmtpIdx] += ';' + videoFmtpExtra;
-              }
-            } else {
-              const rtpIdx = lines.findIndex((l) => l.startsWith(`a=rtpmap:${pt} `));
-              if (rtpIdx !== -1) {
-                lines.splice(rtpIdx + 1, 0, `a=fmtp:${pt} ${videoFmtpExtra}`);
-              }
-            }
-          });
 
           // Set 2.0 Mbps bandwidth ceiling for smooth mobile packet delivery
           const asLineIdx = lines.findIndex((l, idx) => idx > mVideoIndex && idx < mVideoIndex + 6 && l.startsWith('b=AS:'));
@@ -312,7 +299,8 @@
   let remoteStream = null;
   let currentCallerId = null;
   let targetPartnerId = null;
-  let currentFacingMode = 'user'; // 'user' | 'environment'
+  let currentFacingMode = 'user';
+    isAcceptingCall = false; // 'user' | 'environment'
   let callTimerInterval = null;
   let callSecondsElapsed = 0;
   let pendingIceCandidates = [];
@@ -510,8 +498,8 @@
     } else {
       // Create SVG inline avatar with initial
       const initial = (fallbackText || 'P').charAt(0).toUpperCase();
-      const svg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%238b5cf6"/><text x="50%" y="54%" font-size="44" font-family="Arial,sans-serif" font-weight="bold" fill="%23ffffff" dominant-baseline="middle" text-anchor="middle">${initial}</text></svg>`;
-      imgEl.src = svg;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%238b5cf6"/><text x="50%" y="54%" font-size="44" font-family="Arial,sans-serif" font-weight="bold" fill="%23ffffff" dominant-baseline="middle" text-anchor="middle">${initial}</text></svg>`;
+      imgEl.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     }
   }
 
@@ -529,99 +517,102 @@
 
   // ─── Local Media Acquisition (Adaptive HD with Graceful Fallback) ─────────
   async function acquireLocalStream(type) {
+    if (localStream && localStream.active) {
+      const hasAudio = localStream.getAudioTracks().some((t) => t.readyState === 'live');
+      const hasVideo = localStream.getVideoTracks().some((t) => t.readyState === 'live');
+      if (hasAudio && (type !== 'video' || hasVideo)) {
+        return localStream;
+      }
+    }
+
     const audioConstraints = {
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,
-      channelCount: 1,
-      sampleRate: 48000,
-      googEchoCancellation: true,
-      googAutoGainControl: true,
-      googNoiseSuppression: true,
-      googHighpassFilter: true,
-      googTypingNoiseDetection: false,
     };
 
-    // WhatsApp-style portrait aspect ratio (720x1280 9:16) on mobile, landscape (1280x720 16:9) on desktop
-    const videoConstraints = getVideoConstraints();
+    const isPortrait = window.innerHeight >= window.innerWidth;
+    const videoConstraints = {
+      facingMode: currentFacingMode || 'user',
+      width: { ideal: isPortrait ? 720 : 1280 },
+      height: { ideal: isPortrait ? 1280 : 720 },
+      frameRate: { ideal: 30, max: 30 },
+    };
 
+    let stream = null;
+
+    // Multi-tier acquisition with bulletproof fallbacks
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
         video: type === 'video' ? videoConstraints : false,
       });
-      localStream = stream;
-
-      // Speech content hint for optimal vocal clarity without audio clipping or gating
-      const aTrack = stream.getAudioTracks()[0];
-      if (aTrack && 'contentHint' in aTrack) {
-        aTrack.contentHint = 'speech';
-      }
-
-      const vTrack = stream.getVideoTracks()[0];
-      if (vTrack && 'contentHint' in vTrack) {
-        vTrack.contentHint = 'motion';
-      }
-
-      // Bind to local video player if video call
-      if (type === 'video' && localVideoPlayer) {
-        localVideoPlayer.srcObject = stream;
-        localVideoPlayer.muted = true;
-        localVideoPlayer.playsInline = true;
-        if (currentFacingMode === 'user') {
-          localVideoPlayer.classList.add('mirror');
-        } else {
-          localVideoPlayer.classList.remove('mirror');
-        }
-        localVideoPlayer.play().catch(() => {});
-      }
-      return stream;
-    } catch (err) {
-      // Graceful fallback for mobile cameras with limited capability
-      if (type === 'video') {
-        console.warn('Initial camera constraints failed, attempting fallback camera config...', err);
+    } catch (err1) {
+      console.warn('Initial camera/audio constraints failed, attempting relaxed constraints...', err1);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+          video: type === 'video' ? { facingMode: currentFacingMode || 'user' } : false,
+        });
+      } catch (err2) {
+        console.warn('Relaxed constraints failed, attempting basic constraints...', err2);
         try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            audio: audioConstraints,
-            video: getVideoConstraints(),
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: type === 'video',
           });
-          localStream = fallbackStream;
-          const fbATrack = fallbackStream.getAudioTracks()[0];
-          if (fbATrack && 'contentHint' in fbATrack) {
-            fbATrack.contentHint = 'speech';
-          }
-          const fbVTrack = fallbackStream.getVideoTracks()[0];
-          if (fbVTrack && 'contentHint' in fbVTrack) {
-            fbVTrack.contentHint = 'motion';
-          }
-          if (localVideoPlayer) {
-            localVideoPlayer.srcObject = fallbackStream;
-            localVideoPlayer.muted = true;
-            localVideoPlayer.playsInline = true;
-            if (currentFacingMode === 'user') {
-              localVideoPlayer.classList.add('mirror');
-            } else {
-              localVideoPlayer.classList.remove('mirror');
+        } catch (err3) {
+          if (type === 'video') {
+            console.warn('Video acquisition failed, falling back to audio-only to prevent call drop...', err3);
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              if (window.UI?.showToast) {
+                window.UI.showToast('Camera unavailable, joined with audio.', 'info');
+              }
+            } catch (err4) {
+              console.error('All media acquisition failed:', err4);
+              if (window.UI?.showToast) {
+                window.UI.showToast('Microphone / Camera access denied or unavailable.', 'error');
+              }
+              throw err4;
             }
-            localVideoPlayer.play().catch(() => {});
+          } else {
+            console.error('Audio acquisition failed:', err3);
+            if (window.UI?.showToast) {
+              window.UI.showToast('Microphone access denied or unavailable.', 'error');
+            }
+            throw err3;
           }
-          return fallbackStream;
-        } catch (fallbackErr) {
-          console.error('Fallback getUserMedia failed:', fallbackErr);
-          throw fallbackErr;
         }
       }
-
-      console.error('Failed to acquire media stream:', err);
-      if (window.UI?.showToast) {
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          window.UI.showToast('Microphone / Camera permission denied.', 'error');
-        } else {
-          window.UI.showToast('Could not access microphone or camera.', 'error');
-        }
-      }
-      throw err;
     }
+
+    localStream = stream;
+
+    // Speech content hint for optimal vocal clarity
+    const aTrack = stream.getAudioTracks()[0];
+    if (aTrack && 'contentHint' in aTrack) {
+      aTrack.contentHint = 'speech';
+    }
+
+    const vTrack = stream.getVideoTracks()[0];
+    if (vTrack && 'contentHint' in vTrack) {
+      vTrack.contentHint = 'motion';
+    }
+
+    // Bind to local video player if video call
+    if (type === 'video' && localVideoPlayer && stream.getVideoTracks().length > 0) {
+      localVideoPlayer.srcObject = stream;
+      localVideoPlayer.muted = true;
+      localVideoPlayer.playsInline = true;
+      if (currentFacingMode === 'user') {
+        localVideoPlayer.classList.add('mirror');
+      } else {
+        localVideoPlayer.classList.remove('mirror');
+      }
+      localVideoPlayer.play().catch(() => {});
+    }
+    return stream;
   }
 
   // ─── WebRTC Peer Connection Setup ───────────────────────────────────────────
@@ -655,7 +646,7 @@
             (c) => c.mimeType.toLowerCase() !== 'video/h264' && c.mimeType.toLowerCase() !== 'video/vp8'
           );
           if (typeof videoTransceiver.setCodecPreferences === 'function') {
-            videoTransceiver.setCodecPreferences([...h264Codecs, ...vp8Codecs, ...otherCodecs]);
+            videoTransceiver.setCodecPreferences([...vp8Codecs, ...h264Codecs, ...otherCodecs]);
           }
         }
       }
@@ -830,9 +821,16 @@
         offerToReceiveAudio: true,
         offerToReceiveVideo: type === 'video',
       });
-      const optimizedSdp = optimizeSdp(offer.sdp, type === 'video');
-      const finalOffer = new RTCSessionDescription({ type: offer.type, sdp: optimizedSdp });
-      await pc.setLocalDescription(finalOffer);
+      let finalOffer = offer;
+      try {
+        const optimizedSdp = optimizeSdp(offer.sdp, type === 'video', false);
+        finalOffer = new RTCSessionDescription({ type: offer.type, sdp: optimizedSdp });
+        await pc.setLocalDescription(finalOffer);
+      } catch (sdpErr) {
+        console.warn('Optimized offer SDP rejected, using raw offer:', sdpErr);
+        finalOffer = offer;
+        await pc.setLocalDescription(offer);
+      }
       await tuneSenderParameters(pc, type);
 
       if (outgoingCallStatus) outgoingCallStatus.textContent = 'Calling...';
@@ -949,8 +947,10 @@
   }
 
   // Accept incoming call
+  let isAcceptingCall = false;
   async function acceptIncomingCall() {
-    if (callState !== 'ringing' || !incomingOfferData) return;
+    if (callState !== 'ringing' || !incomingOfferData || isAcceptingCall) return;
+    isAcceptingCall = true;
     stopAllTones();
     if (incomingCallTimeout) clearTimeout(incomingCallTimeout);
 
@@ -970,9 +970,18 @@
         offerToReceiveAudio: true,
         offerToReceiveVideo: callType === 'video',
       });
-      const optimizedAnswerSdp = optimizeSdp(answer.sdp, callType === 'video');
-      const finalAnswer = new RTCSessionDescription({ type: answer.type, sdp: optimizedAnswerSdp });
-      await pc.setLocalDescription(finalAnswer);
+
+      let finalAnswer = answer;
+      try {
+        const optimizedAnswerSdp = optimizeSdp(answer.sdp, callType === 'video', true);
+        finalAnswer = new RTCSessionDescription({ type: answer.type, sdp: optimizedAnswerSdp });
+        await pc.setLocalDescription(finalAnswer);
+      } catch (sdpErr) {
+        console.warn('Optimized answer SDP rejected, falling back to raw browser answer:', sdpErr);
+        finalAnswer = answer;
+        await pc.setLocalDescription(answer);
+      }
+
       await tuneSenderParameters(pc, callType);
 
       if (window.ChatSocket) {
@@ -985,7 +994,12 @@
       transitionToConnected();
     } catch (err) {
       console.error('acceptIncomingCall error:', err);
+      if (window.UI?.showToast) {
+        window.UI.showToast('Could not answer call: ' + (err.message || 'Media/Connection error'), 'error');
+      }
       declineIncomingCall('error');
+    } finally {
+      isAcceptingCall = false;
     }
   }
 
@@ -1450,9 +1464,16 @@
     try {
       currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
 
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: getVideoConstraints(),
-      });
+      let newStream = null;
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: getVideoConstraints(),
+        });
+      } catch (e) {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: currentFacingMode },
+        });
+      }
 
       const newVideoTrack = newStream.getVideoTracks()[0];
       if (newVideoTrack && 'contentHint' in newVideoTrack) {
@@ -1923,9 +1944,15 @@
         peerConnection.restartIce();
       }
       const offer = await peerConnection.createOffer({ iceRestart: true });
-      const optimizedSdp = optimizeSdp(offer.sdp, callType === 'video');
-      const finalOffer = new RTCSessionDescription({ type: offer.type, sdp: optimizedSdp });
-      await peerConnection.setLocalDescription(finalOffer);
+      let finalOffer = offer;
+      try {
+        const optimizedSdp = optimizeSdp(offer.sdp, callType === 'video', false);
+        finalOffer = new RTCSessionDescription({ type: offer.type, sdp: optimizedSdp });
+        await peerConnection.setLocalDescription(finalOffer);
+      } catch (e) {
+        finalOffer = offer;
+        await peerConnection.setLocalDescription(offer);
+      }
 
       if (window.ChatSocket) {
         window.ChatSocket.emit('call_renegotiate', {
@@ -2034,9 +2061,15 @@
           }
 
           const answer = await peerConnection.createAnswer();
-          const optimizedAnswer = optimizeSdp(answer.sdp, callType === 'video');
-          const finalAnswer = new RTCSessionDescription({ type: answer.type, sdp: optimizedAnswer });
-          await peerConnection.setLocalDescription(finalAnswer);
+          let finalAnswer = answer;
+          try {
+            const optimizedAnswer = optimizeSdp(answer.sdp, callType === 'video', true);
+            finalAnswer = new RTCSessionDescription({ type: answer.type, sdp: optimizedAnswer });
+            await peerConnection.setLocalDescription(finalAnswer);
+          } catch (e) {
+            finalAnswer = answer;
+            await peerConnection.setLocalDescription(answer);
+          }
           await tuneSenderParameters(peerConnection, callType);
 
           window.ChatSocket.emit('call_renegotiate', {
