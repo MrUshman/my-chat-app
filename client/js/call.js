@@ -505,8 +505,12 @@
 
   // Helper: WhatsApp-style camera constraints matching mobile portrait orientation
   function getVideoConstraints() {
+    const isPortrait = window.innerHeight >= window.innerWidth;
     return {
       facingMode: currentFacingMode || 'user',
+      width: { ideal: isPortrait ? 720 : 1280 },
+      height: { ideal: isPortrait ? 1280 : 720 },
+      aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
       frameRate: { ideal: 30, max: 30 },
     };
   }
@@ -586,8 +590,20 @@
     }
 
     const vTrack = stream.getVideoTracks()[0];
-    if (vTrack && 'contentHint' in vTrack) {
-      vTrack.contentHint = 'motion';
+    if (vTrack) {
+      if ('contentHint' in vTrack) {
+        vTrack.contentHint = 'motion';
+      }
+      // Reset hardware/OEM camera zoom to minimum (1.0x wide field of view, no crop)
+      try {
+        if (typeof vTrack.getCapabilities === 'function') {
+          const caps = vTrack.getCapabilities();
+          if (caps && 'zoom' in caps) {
+            const minZ = (caps.zoom && typeof caps.zoom.min === 'number') ? caps.zoom.min : 1;
+            vTrack.applyConstraints({ advanced: [{ zoom: minZ }] }).catch(() => {});
+          }
+        }
+      } catch (e) {}
     }
 
     // Bind to local video player if video call
@@ -1106,6 +1122,27 @@
     } catch (e) {}
   }
 
+    // ─── Adaptive Full-Screen Video Fit (Zero Zoom Distortion) ───────────────
+  function updateRemoteVideoFit() {
+    if (!remoteVideoPlayer) return;
+    const vw = remoteVideoPlayer.videoWidth;
+    const vh = remoteVideoPlayer.videoHeight;
+    if (!vw || !vh) {
+      remoteVideoPlayer.style.objectFit = 'cover';
+      return;
+    }
+    const isScreenPortrait = window.innerHeight >= window.innerWidth;
+    const isVideoPortrait = vh >= vw;
+
+    // When orientations match (mobile portrait call), cover gives 100% full screen WhatsApp look.
+    // When orientations mismatch (e.g. landscape desktop webcam on portrait phone), contain prevents 4x zoom.
+    if (isScreenPortrait === isVideoPortrait) {
+      remoteVideoPlayer.style.objectFit = 'cover';
+    } else {
+      remoteVideoPlayer.style.objectFit = 'contain';
+    }
+  }
+
   // ─── Video Stream Assignment & Tap-to-Swap (WhatsApp Style) ────────────────
   function applyVideoStreamsToPlayers() {
     if (callType !== 'video') return;
@@ -1120,7 +1157,7 @@
         remoteVideoPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.remove('mirror');
-        remoteVideoPlayer.style.objectFit = 'contain';
+        updateRemoteVideoFit();
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
@@ -1154,7 +1191,7 @@
         remoteVideoPlayer.muted = true;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
-        remoteVideoPlayer.style.objectFit = 'contain';
+        updateRemoteVideoFit();
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
@@ -1465,8 +1502,19 @@
       }
 
       const newVideoTrack = newStream.getVideoTracks()[0];
-      if (newVideoTrack && 'contentHint' in newVideoTrack) {
-        newVideoTrack.contentHint = 'motion';
+      if (newVideoTrack) {
+        if ('contentHint' in newVideoTrack) {
+          newVideoTrack.contentHint = 'motion';
+        }
+        try {
+          if (typeof newVideoTrack.getCapabilities === 'function') {
+            const caps = newVideoTrack.getCapabilities();
+            if (caps && 'zoom' in caps) {
+              const minZ = (caps.zoom && typeof caps.zoom.min === 'number') ? caps.zoom.min : 1;
+              newVideoTrack.applyConstraints({ advanced: [{ zoom: minZ }] }).catch(() => {});
+            }
+          }
+        } catch (_) {}
       }
 
       // Replace track on sender
@@ -2236,6 +2284,9 @@
 
     // Video Playback Watchdog: Auto-resume video if browser pauses it
     if (remoteVideoPlayer) {
+      remoteVideoPlayer.addEventListener('loadedmetadata', updateRemoteVideoFit);
+      window.addEventListener('resize', updateRemoteVideoFit);
+      window.addEventListener('orientationchange', updateRemoteVideoFit);
       remoteVideoPlayer.addEventListener('pause', () => {
         if (callState === 'connected' && callType === 'video' && remoteVideoPlayer.paused && !isVideoSwapped) {
           remoteVideoPlayer.play().catch(() => {});
