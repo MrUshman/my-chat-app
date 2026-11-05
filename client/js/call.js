@@ -505,13 +505,14 @@
 
   // Helper: WhatsApp-style camera constraints matching mobile portrait orientation
   function getVideoConstraints() {
-    const isPortrait = window.innerHeight >= window.innerWidth;
+    const isPortrait = (window.screen?.orientation?.type?.includes('portrait')) ||
+                       (window.innerHeight >= window.innerWidth);
     return {
       facingMode: currentFacingMode || 'user',
+      aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
       width: { ideal: isPortrait ? 720 : 1280 },
       height: { ideal: isPortrait ? 1280 : 720 },
-      aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
-      frameRate: { ideal: 30, max: 30 },
+      frameRate: { ideal: 30 },
     };
   }
 
@@ -531,11 +532,13 @@
       autoGainControl: true,
     };
 
+    const isPortrait = (window.screen?.orientation?.type?.includes('portrait')) ||
+                       (window.innerHeight >= window.innerWidth);
     const videoConstraints = getVideoConstraints();
 
     let stream = null;
 
-    // Multi-tier acquisition with bulletproof fallbacks
+    // Multi-tier acquisition with bulletproof fallbacks (all preserving portrait aspect ratio)
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
@@ -546,14 +549,20 @@
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
-          video: type === 'video' ? { facingMode: currentFacingMode || 'user' } : false,
+          video: type === 'video' ? {
+            facingMode: currentFacingMode || 'user',
+            aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
+          } : false,
         });
       } catch (err2) {
         console.warn('Relaxed constraints failed, attempting basic constraints...', err2);
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             audio: true,
-            video: type === 'video',
+            video: type === 'video' ? {
+              facingMode: currentFacingMode || 'user',
+              aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
+            } : false,
           });
         } catch (err3) {
           if (type === 'video') {
@@ -1122,25 +1131,10 @@
     } catch (e) {}
   }
 
-    // ─── Adaptive Full-Screen Video Fit (Zero Zoom Distortion) ───────────────
+  // ─── Adaptive Full-Screen Video Fit (WhatsApp Fullscreen Cover) ───────────────
   function updateRemoteVideoFit() {
     if (!remoteVideoPlayer) return;
-    const vw = remoteVideoPlayer.videoWidth;
-    const vh = remoteVideoPlayer.videoHeight;
-    if (!vw || !vh) {
-      remoteVideoPlayer.style.objectFit = 'cover';
-      return;
-    }
-    const isScreenPortrait = window.innerHeight >= window.innerWidth;
-    const isVideoPortrait = vh >= vw;
-
-    // When orientations match (mobile portrait call), cover gives 100% full screen WhatsApp look.
-    // When orientations mismatch (e.g. landscape desktop webcam on portrait phone), contain prevents 4x zoom.
-    if (isScreenPortrait === isVideoPortrait) {
-      remoteVideoPlayer.style.objectFit = 'cover';
-    } else {
-      remoteVideoPlayer.style.objectFit = 'contain';
-    }
+    remoteVideoPlayer.style.objectFit = 'cover';
   }
 
   // ─── Video Stream Assignment & Tap-to-Swap (WhatsApp Style) ────────────────
@@ -1496,8 +1490,12 @@
           video: getVideoConstraints(),
         });
       } catch (e) {
+        const isPortrait = (window.screen?.orientation?.type?.includes('portrait')) || (window.innerHeight >= window.innerWidth);
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: currentFacingMode },
+          video: {
+            facingMode: currentFacingMode,
+            aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
+          },
         });
       }
 
