@@ -753,7 +753,7 @@
               console.error('❌ Connection recovery timed out, closing call.');
               endCall(false, 'Connection lost');
             }
-          }, 10000);
+          }, 15000);
         }
       } else if (pc.connectionState === 'closed') {
         if (callState === 'connected') {
@@ -782,7 +782,7 @@
               console.log('🔄 Triggering ICE restart after 6s network disconnect...');
               triggerIceRestart('ICE disconnected 6s');
             }
-          }, 6000);
+          }, 8000);
         }
       } else if (pc.iceConnectionState === 'failed') {
         console.warn('⚠️ ICE failed, triggering immediate ICE restart...');
