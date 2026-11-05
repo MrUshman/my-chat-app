@@ -503,15 +503,12 @@
     }
   }
 
-  // Helper: WhatsApp-style camera constraints matching mobile portrait orientation
+  // Default 1x camera constraints matching standard mobile camera
   function getVideoConstraints() {
-    const isPortrait = (window.screen?.orientation?.type?.includes('portrait')) ||
-                       (window.innerHeight >= window.innerWidth);
     return {
       facingMode: currentFacingMode || 'user',
-      aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
-      width: { ideal: isPortrait ? 720 : 1280 },
-      height: { ideal: isPortrait ? 1280 : 720 },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
       frameRate: { ideal: 30 },
     };
   }
@@ -532,13 +529,11 @@
       autoGainControl: true,
     };
 
-    const isPortrait = (window.screen?.orientation?.type?.includes('portrait')) ||
-                       (window.innerHeight >= window.innerWidth);
     const videoConstraints = getVideoConstraints();
 
     let stream = null;
 
-    // Multi-tier acquisition with bulletproof fallbacks (all preserving portrait aspect ratio)
+    // Multi-tier acquisition with bulletproof fallbacks
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
@@ -549,20 +544,14 @@
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: audioConstraints,
-          video: type === 'video' ? {
-            facingMode: currentFacingMode || 'user',
-            aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
-          } : false,
+          video: type === 'video' ? { facingMode: currentFacingMode || 'user' } : false,
         });
       } catch (err2) {
         console.warn('Relaxed constraints failed, attempting basic constraints...', err2);
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             audio: true,
-            video: type === 'video' ? {
-              facingMode: currentFacingMode || 'user',
-              aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
-            } : false,
+            video: type === 'video',
           });
         } catch (err3) {
           if (type === 'video') {
@@ -1131,12 +1120,6 @@
     } catch (e) {}
   }
 
-  // ─── Adaptive Full-Screen Video Fit (WhatsApp Fullscreen Cover) ───────────────
-  function updateRemoteVideoFit() {
-    if (!remoteVideoPlayer) return;
-    remoteVideoPlayer.style.objectFit = 'cover';
-  }
-
   // ─── Video Stream Assignment & Tap-to-Swap (WhatsApp Style) ────────────────
   function applyVideoStreamsToPlayers() {
     if (callType !== 'video') return;
@@ -1151,7 +1134,6 @@
         remoteVideoPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.remove('mirror');
-        updateRemoteVideoFit();
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
@@ -1185,7 +1167,6 @@
         remoteVideoPlayer.muted = true;
         remoteVideoPlayer.playsInline = true;
         remoteVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
-        updateRemoteVideoFit();
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
@@ -1490,12 +1471,8 @@
           video: getVideoConstraints(),
         });
       } catch (e) {
-        const isPortrait = (window.screen?.orientation?.type?.includes('portrait')) || (window.innerHeight >= window.innerWidth);
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: currentFacingMode,
-            aspectRatio: { ideal: isPortrait ? (9 / 16) : (16 / 9) },
-          },
+          video: { facingMode: currentFacingMode },
         });
       }
 
@@ -2282,9 +2259,6 @@
 
     // Video Playback Watchdog: Auto-resume video if browser pauses it
     if (remoteVideoPlayer) {
-      remoteVideoPlayer.addEventListener('loadedmetadata', updateRemoteVideoFit);
-      window.addEventListener('resize', updateRemoteVideoFit);
-      window.addEventListener('orientationchange', updateRemoteVideoFit);
       remoteVideoPlayer.addEventListener('pause', () => {
         if (callState === 'connected' && callType === 'video' && remoteVideoPlayer.paused && !isVideoSwapped) {
           remoteVideoPlayer.play().catch(() => {});
