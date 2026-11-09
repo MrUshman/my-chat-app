@@ -75,6 +75,20 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 });
 
+// Helper to find deterministic partner in private 2-person chat
+async function getPartnerForUser(user) {
+  if (!user) return null;
+  const username = user.username ? user.username.toLowerCase().trim() : '';
+  if (username === 'usman') {
+    const p = await User.findOne({ username: 'rehnuma' }).select('username displayName profileImage lastSeen createdAt').lean();
+    if (p) return p;
+  } else if (username === 'rehnuma') {
+    const p = await User.findOne({ username: 'usman' }).select('username displayName profileImage lastSeen createdAt').lean();
+    if (p) return p;
+  }
+  return User.findOne({ _id: { $ne: user._id } }).select('username displayName profileImage lastSeen createdAt').lean();
+}
+
 // POST /api/auth/register
 router.post('/register', loginLimiter, async (req, res) => {
   try {
@@ -82,6 +96,12 @@ router.post('/register', loginLimiter, async (req, res) => {
 
     if (!username || !password || !displayName) {
       return res.status(400).json({ error: 'Display Name, Username, and Password are required.' });
+    }
+
+    // Strict 2-user maximum limit for private chat
+    const userCount = await User.countDocuments();
+    if (userCount >= 2) {
+      return res.status(403).json({ error: 'This is a private chat app. Maximum number of users (2) already registered.' });
     }
 
     const cleanUsername = username.toLowerCase().trim();
@@ -148,9 +168,7 @@ router.get('/me', requireAuth, async (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
 
-    const partner = await User.findOne({ _id: { $ne: req.user._id } })
-      .select('username displayName profileImage lastSeen createdAt')
-      .lean();
+    const partner = await getPartnerForUser(req.user);
 
     const io = req.app.get('io');
     const partnerOnline = partner ? isUserOnline(partner._id.toString(), io) : false;
@@ -172,9 +190,7 @@ router.get('/partner', requireAuth, async (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
 
-    const partner = await User.findOne({ _id: { $ne: req.user._id } })
-      .select('username displayName profileImage lastSeen createdAt')
-      .lean();
+    const partner = await getPartnerForUser(req.user);
     if (!partner) {
       return res.status(404).json({ error: 'Partner not found' });
     }

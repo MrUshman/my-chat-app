@@ -144,6 +144,20 @@ function isUserOnline(userId, ioInstance, excludeSocketId = null) {
   return false;
 }
 
+// Helper to find deterministic partner in private 2-person chat
+async function getPartnerForSocket(user) {
+  if (!user) return null;
+  const username = user.username ? user.username.toLowerCase().trim() : '';
+  if (username === 'usman') {
+    const p = await User.findOne({ username: 'rehnuma' });
+    if (p) return p;
+  } else if (username === 'rehnuma') {
+    const p = await User.findOne({ username: 'usman' });
+    if (p) return p;
+  }
+  return User.findOne({ _id: { $ne: user._id } });
+}
+
 /**
  * Initialize Socket.IO handlers on the server.
  * @param {import('socket.io').Server} io
@@ -176,7 +190,7 @@ function initChatSocket(io) {
 
     // Send partner's current status directly to this user on connect
     try {
-      const partner = await User.findOne({ _id: { $ne: user._id } }).select('username displayName profileImage lastSeen');
+      const partner = await getPartnerForSocket(user);
       if (partner) {
         const partnerOnline = isUserOnline(partner._id.toString(), io);
         socket.emit('partner_status', {
@@ -212,7 +226,7 @@ function initChatSocket(io) {
         );
 
         // Notify sender of delivery status across all tabs
-        const otherUser = await User.findOne({ _id: { $ne: user._id } });
+        const otherUser = await getPartnerForSocket(user);
         if (otherUser) {
           io.to(otherUser._id.toString()).emit('messages_delivered', {
             messageIds: ids.map(id => id.toString()),
@@ -240,7 +254,7 @@ function initChatSocket(io) {
         }
 
         // Find the other user
-        const otherUser = await User.findOne({ _id: { $ne: user._id } });
+        const otherUser = await getPartnerForSocket(user);
         if (!otherUser) {
           return ack?.({ error: 'Receiver not found.' });
         }
@@ -356,7 +370,7 @@ function initChatSocket(io) {
     socket.on('typing_start', async () => {
       try {
         registerUser(userId, socket.id);
-        const otherUser = await User.findOne({ _id: { $ne: user._id } }).select('_id');
+        const otherUser = await getPartnerForSocket(user);
         if (otherUser) {
           io.to(otherUser._id.toString()).emit('typing_start', {
             userId,
@@ -371,7 +385,7 @@ function initChatSocket(io) {
     socket.on('typing_stop', async () => {
       try {
         registerUser(userId, socket.id);
-        const otherUser = await User.findOne({ _id: { $ne: user._id } }).select('_id');
+        const otherUser = await getPartnerForSocket(user);
         if (otherUser) {
           io.to(otherUser._id.toString()).emit('typing_stop', { userId });
         }
@@ -400,7 +414,7 @@ function initChatSocket(io) {
         );
 
         // Find the sender (the other user in this 2-person chat)
-        const otherUser = await User.findOne({ _id: { $ne: user._id } });
+        const otherUser = await getPartnerForSocket(user);
         if (otherUser) {
           const otherUserId = otherUser._id.toString();
           // Emit directly to sender's room so their tick turns emerald green in real time
@@ -500,7 +514,7 @@ function initChatSocket(io) {
     socket.on('call_user', async (data, ack) => {
       try {
         const { callType, offer } = data || {};
-        const otherUser = await User.findOne({ _id: { $ne: user._id } });
+        const otherUser = await getPartnerForSocket(user);
         if (!otherUser) return ack?.({ error: 'Partner not found' });
         const otherUserId = otherUser._id.toString();
 
@@ -599,7 +613,7 @@ function initChatSocket(io) {
       const { targetUserId, durationSec, callType } = data || {};
       let otherId = targetUserId;
       if (!otherId) {
-        const otherUser = await User.findOne({ _id: { $ne: user._id } });
+        const otherUser = await getPartnerForSocket(user);
         if (otherUser) otherId = otherUser._id.toString();
       }
 

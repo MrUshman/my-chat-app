@@ -893,6 +893,7 @@ async function sendMessage() {
   messageInput.style.height = 'auto';
   updateSendButton();
   stopTyping();
+  try { messageInput.focus(); } catch (_) {}
 
   const replyToId = currentReplyTarget?.id || null;
   const replyTargetObj = currentReplyTarget ? { ...currentReplyTarget } : null;

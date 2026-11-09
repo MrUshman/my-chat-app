@@ -8,6 +8,20 @@ const { isUserOnline } = require('../sockets/chatSocket');
 
 const router = express.Router();
 
+// Helper to find deterministic partner in private 2-person chat
+async function getPartnerForUser(user) {
+  if (!user) return null;
+  const username = user.username ? user.username.toLowerCase().trim() : '';
+  if (username === 'usman') {
+    const p = await User.findOne({ username: 'rehnuma' });
+    if (p) return p;
+  } else if (username === 'rehnuma') {
+    const p = await User.findOne({ username: 'usman' });
+    if (p) return p;
+  }
+  return User.findOne({ _id: { $ne: user._id } });
+}
+
 // GET /api/messages?before=<messageId>&limit=20
 // Returns paginated messages for the conversation, newest first
 router.get('/', requireAuth, async (req, res) => {
@@ -72,7 +86,7 @@ router.get('/', requireAuth, async (req, res) => {
         });
 
         const io = req.app.get('io');
-        const otherUser = await User.findOne({ _id: { $ne: req.user._id } }).select('_id');
+        const otherUser = await getPartnerForUser(req.user);
         if (io && otherUser) {
           io.to(otherUser._id.toString()).emit('messages_delivered', {
             messageIds: undeliveredIds.map(id => id.toString()),
@@ -110,7 +124,7 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Message is too long.' });
     }
 
-    const otherUser = await User.findOne({ _id: { $ne: req.user._id } });
+    const otherUser = await getPartnerForUser(req.user);
     if (!otherUser) {
       return res.status(404).json({ error: 'Receiver not found.' });
     }
