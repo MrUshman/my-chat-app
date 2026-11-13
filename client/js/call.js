@@ -1092,6 +1092,11 @@
     applyAvatarToImg(activeCallPartnerAvatar, partner.profileImage, partner.displayName);
     if (activeCallPartnerName) activeCallPartnerName.textContent = partner.displayName;
 
+    if (activeCallModal) {
+      activeCallModal.classList.toggle('audio-mode', callType !== 'video');
+      activeCallModal.classList.toggle('video-mode', callType === 'video');
+    }
+
     if (callType === 'video') {
       if (callVideoContainer) callVideoContainer.style.display = 'block';
       if (callAudioContainer) callAudioContainer.style.display = 'none';
@@ -1646,6 +1651,7 @@
     if (outgoingCallModal) hideModal(outgoingCallModal);
     if (incomingCallModal) hideModal(incomingCallModal);
     if (activeCallModal) {
+      activeCallModal.classList.remove('audio-mode', 'video-mode');
       hideModal(activeCallModal);
       activeCallModal.classList.remove('controls-hidden');
     }

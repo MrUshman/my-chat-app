@@ -4115,6 +4115,10 @@ body.motion-minimal .chat-messages {
   background: #000000 !important;
 }
 
+.active-call-overlay.audio-mode {
+  background: radial-gradient(circle at 50% 36%, #251b47 0%, #15102e 45%, #0b0918 100%) !important;
+}
+
 /* Video Containers */
 .call-video-container {
   position: absolute;
@@ -4188,7 +4192,8 @@ body.motion-minimal .chat-messages {
 
 /* Audio Voice Mode Container */
 .call-audio-container {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -4196,7 +4201,44 @@ body.motion-minimal .chat-messages {
   justify-content: center;
   height: 100%;
   width: 100%;
-  margin-top: -60px;
+  background: radial-gradient(circle at 50% 36%, #251b47 0%, #15102e 45%, #0b0918 100%);
+  overflow: hidden;
+  margin-top: 0;
+  padding-bottom: 50px;
+}
+
+.call-audio-container::before {
+  content: '';
+  position: absolute;
+  top: 36%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.32) 0%, rgba(99, 102, 241, 0.14) 48%, transparent 72%);
+  filter: blur(40px);
+  pointer-events: none;
+  z-index: 1;
+  animation: audioAmbientPulse 4s ease-in-out infinite alternate;
+}
+
+@keyframes audioAmbientPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 1;
+  }
+}
+
+.call-audio-container .active-audio-avatar,
+.call-audio-container .calling-partner-name,
+.call-audio-container .audio-visualizer-bars {
+  position: relative;
+  z-index: 3;
 }
 
 .active-audio-avatar {
