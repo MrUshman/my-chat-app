@@ -314,6 +314,8 @@
   let lastPacketsSent = 0;
   let lastPacketsLost = 0;
   let isRenegotiating = false;
+  let currentCallerName = '';
+  let currentCallerAvatar = '';
 
   function getCurrentUserId() {
     let u = null;
@@ -414,10 +416,13 @@
     const avatarEl = document.getElementById('partnerAvatar');
     const avatarImg = avatarEl ? avatarEl.querySelector('img') : null;
 
+    const resolvedName = p?.displayName || currentCallerName || nameEl?.textContent?.trim() || 'Partner';
+    const resolvedAvatar = p?.profileImage || currentCallerAvatar || avatarImg?.src || null;
+
     return {
-      _id: p?._id || null,
-      displayName: p?.displayName || nameEl?.textContent?.trim() || 'Partner',
-      profileImage: p?.profileImage || avatarImg?.src || null,
+      _id: p?._id || currentCallerId || targetPartnerId || null,
+      displayName: resolvedName,
+      profileImage: resolvedAvatar,
     };
   }
 
@@ -491,15 +496,32 @@
     }
   }
 
+  const DEFAULT_AVATAR_SVG =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cdefs%3E%3ClinearGradient id='g_def' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%238b5cf6'/%3E%3Cstop offset='100%25' stop-color='%236366f1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='160' height='160' rx='80' fill='url(%23g_def)'/%3E%3Cpath fill='%23ffffff' opacity='0.9' d='M80 75a25 25 0 1 0 0-50 25 25 0 0 0 0 50zm0 15c-28 0-50 15-50 35v5h100v-5c0-20-22-35-50-35z'/%3E%3C/svg%3E";
+
+  function createAvatarDataUrl(nameOrInitial) {
+    const raw = (nameOrInitial || '').trim();
+    if (!raw || raw.toLowerCase() === 'partner') {
+      return DEFAULT_AVATAR_SVG;
+    }
+    const letter = raw.charAt(0).toUpperCase();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><defs><linearGradient id="grad_${letter.charCodeAt(0)}" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs><rect width="160" height="160" rx="80" fill="url(#grad_${letter.charCodeAt(0)})"/><text x="80" y="98" font-size="68" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="700" fill="#ffffff" text-anchor="middle">${letter}</text></svg>`;
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+
   function applyAvatarToImg(imgEl, avatarUrl, fallbackText) {
     if (!imgEl) return;
-    if (avatarUrl && !avatarUrl.includes('favicon.ico')) {
+    const fallback = createAvatarDataUrl(fallbackText);
+    imgEl.alt = '';
+    if (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.trim() !== '' && !avatarUrl.includes('favicon.ico')) {
+      imgEl.onerror = function () {
+        this.onerror = null;
+        this.src = fallback;
+      };
       imgEl.src = avatarUrl;
     } else {
-      // Create SVG inline avatar with initial
-      const initial = (fallbackText || 'P').charAt(0).toUpperCase();
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%238b5cf6"/><text x="50%" y="54%" font-size="44" font-family="Arial,sans-serif" font-weight="bold" fill="%23ffffff" dominant-baseline="middle" text-anchor="middle">${initial}</text></svg>`;
-      imgEl.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      imgEl.onerror = null;
+      imgEl.src = fallback;
     }
   }
 
@@ -800,6 +822,8 @@
 
     const partner = getPartnerInfo();
     targetPartnerId = partner._id;
+    currentCallerName = partner.displayName || '';
+    currentCallerAvatar = partner.profileImage || '';
     callType = type;
     pendingIceCandidates = [];
     callType = type;
@@ -872,6 +896,8 @@
   function handleIncomingCall(data) {
     if (!data) return;
     const { callerId, callerName, callerAvatar, callType: incomingType, offer } = data;
+    currentCallerName = callerName || '';
+    currentCallerAvatar = callerAvatar || '';
 
     // WhatsApp-Style Simultaneous Calling Resolution (Glare tie-breaker)
     // If both users call each other at the exact same moment:
@@ -1349,7 +1375,7 @@
           artist: partner?.displayName || 'Partner',
           album: 'Background Voice Active',
           artwork: [
-            { src: partner?.profileImage || '/favicon.ico', sizes: '192x192', type: 'image/png' },
+            { src: partner?.profileImage || createAvatarDataUrl(partner?.displayName), sizes: '192x192', type: 'image/png' },
           ],
         });
         navigator.mediaSession.playbackState = 'playing';
@@ -1542,6 +1568,8 @@
     targetPartnerId = null;
     pendingIceCandidates = [];
     currentFacingMode = 'user';
+    currentCallerName = '';
+    currentCallerAvatar = '';
     isCallMinimized = false;
     isVideoSwapped = false;
     isAcceptingCall = false;

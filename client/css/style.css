@@ -3997,6 +3997,13 @@ body.motion-minimal .chat-messages {
   border: 3.5px solid rgba(255, 255, 255, 0.9);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   z-index: 3;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .calling-pulse-ring {
@@ -4200,6 +4207,41 @@ body.motion-minimal .chat-messages {
 .active-audio-avatar .calling-avatar-img {
   width: 130px;
   height: 130px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7);
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
+}
+
+.audio-wave-ring {
+  position: absolute;
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  border: 2px solid rgba(139, 92, 246, 0.5);
+  animation: audioWavePulse 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.audio-wave-ring.ring-2 {
+  animation-delay: 1.2s;
+}
+
+@keyframes audioWavePulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.65);
+    opacity: 0;
+  }
 }
 
 /* Animated Audio Wave Bars */
