@@ -4135,8 +4135,8 @@ body.motion-minimal .chat-messages {
   height: 100%;
   object-fit: cover;
   background: #000000;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
+  transform: scaleX(-1) translateZ(0);
+  -webkit-transform: scaleX(-1) translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   image-rendering: auto;
@@ -4188,6 +4188,20 @@ body.motion-minimal .chat-messages {
   -webkit-backface-visibility: hidden;
   image-rendering: auto;
   will-change: transform;
+}
+
+.remote-video-player.mirror,
+.local-video-player.mirror,
+.floating-pip-video.mirror {
+  transform: scaleX(-1) translateZ(0) !important;
+  -webkit-transform: scaleX(-1) translateZ(0) !important;
+}
+
+.remote-video-player.no-mirror,
+.local-video-player.no-mirror,
+.floating-pip-video.no-mirror {
+  transform: scaleX(1) translateZ(0) !important;
+  -webkit-transform: scaleX(1) translateZ(0) !important;
 }
 
 /* Audio Voice Mode Container */
@@ -4532,6 +4546,8 @@ body.motion-minimal .chat-messages {
   object-fit: cover;
   display: block;
   pointer-events: none;
+  transform: scaleX(-1) translateZ(0);
+  -webkit-transform: scaleX(-1) translateZ(0);
 }
 
 .floating-pip-badge {

@@ -633,8 +633,10 @@
       localVideoPlayer.playsInline = true;
       if (currentFacingMode === 'user') {
         localVideoPlayer.classList.add('mirror');
+        localVideoPlayer.classList.remove('no-mirror');
       } else {
         localVideoPlayer.classList.remove('mirror');
+        localVideoPlayer.classList.add('no-mirror');
       }
       localVideoPlayer.play().catch(() => {});
     }
@@ -1164,7 +1166,8 @@
         remoteVideoPlayer.muted = false;
         remoteVideoPlayer.volume = isSpeakerMode ? 1.0 : 0.45;
         remoteVideoPlayer.playsInline = true;
-        remoteVideoPlayer.classList.remove('mirror');
+        remoteVideoPlayer.classList.add('mirror');
+        remoteVideoPlayer.classList.remove('no-mirror');
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
@@ -1177,7 +1180,9 @@
         }
         localVideoPlayer.muted = true;
         localVideoPlayer.playsInline = true;
-        localVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
+        const isLocalMirror = currentFacingMode !== 'environment';
+        localVideoPlayer.classList.toggle('mirror', isLocalMirror);
+        localVideoPlayer.classList.toggle('no-mirror', !isLocalMirror);
         localVideoPlayer.style.objectFit = 'cover';
         if (localVideoPlayer.paused) {
           localVideoPlayer.play().catch(() => {});
@@ -1197,7 +1202,9 @@
         }
         remoteVideoPlayer.muted = true;
         remoteVideoPlayer.playsInline = true;
-        remoteVideoPlayer.classList.toggle('mirror', currentFacingMode === 'user');
+        const isLocalMirror = currentFacingMode !== 'environment';
+        remoteVideoPlayer.classList.toggle('mirror', isLocalMirror);
+        remoteVideoPlayer.classList.toggle('no-mirror', !isLocalMirror);
         if (remoteVideoPlayer.paused) {
           remoteVideoPlayer.play().catch(() => {});
         }
@@ -1210,7 +1217,8 @@
         }
         localVideoPlayer.muted = true;
         localVideoPlayer.playsInline = true;
-        localVideoPlayer.classList.remove('mirror');
+        localVideoPlayer.classList.add('mirror');
+        localVideoPlayer.classList.remove('no-mirror');
         localVideoPlayer.style.objectFit = 'cover';
         if (localVideoPlayer.paused) {
           localVideoPlayer.play().catch(() => {});
@@ -1239,6 +1247,7 @@
       }
       floatingPipVideo.muted = true;
       floatingPipVideo.playsInline = true;
+      floatingPipVideo.classList.add('mirror');
       if (floatingPipVideo.paused) {
         floatingPipVideo.play().catch(() => {});
       }
@@ -1288,6 +1297,7 @@
         floatingPipVideo.srcObject = remoteStream;
         floatingPipVideo.muted = true;
         floatingPipVideo.playsInline = true;
+        floatingPipVideo.classList.add('mirror');
         floatingPipVideo.play().catch(() => {});
       }
       if (floatingPipTimer) {
