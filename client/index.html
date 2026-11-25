@@ -4,14 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="description" content="Private chat — our little corner of the internet" />
+  <meta name="theme-color" content="#0a0914" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Chat ❤️" />
   <title>Chat ❤️</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9D%A4%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="manifest" href="/manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=50.0" />
-  <link rel="preload" href="/css/style.css?v=50.0" as="style" />
-  <link rel="preload" href="/js/chat.js?v=50.0" as="script" />
+  <link rel="stylesheet" href="/css/style.css?v=51.0" />
+  <link rel="preload" href="/css/style.css?v=51.0" as="style" />
+  <link rel="preload" href="/js/chat.js?v=51.0" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
     /* In-App Camera Mobile Guarantee */
@@ -659,6 +666,21 @@
             </svg>
             <span>Themes & Wallpapers 🎨</span>
           </button>
+          <button id="pwaInstallMenuBtn" class="dropdown-item" role="menuitem">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span id="pwaInstallMenuText">Install App 📲</span>
+          </button>
+          <button id="appLockMenuBtn" class="dropdown-item" role="menuitem">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span>App Lock 🔒</span>
+          </button>
           <div class="dropdown-divider"></div>
           <button id="logoutBtn" class="dropdown-item logout-item" role="menuitem">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1123,6 +1145,80 @@
     </div>
   </div>
 
+  <!-- App Lock Settings Modal -->
+  <div class="modal-overlay" id="appLockModal" role="dialog" aria-modal="true" aria-label="App Lock Settings" style="display:none;">
+    <div class="profile-modal-card" style="max-width: 360px;">
+      <div class="profile-modal-header">
+        <h2 class="profile-modal-title">🔒 App Lock & Privacy</h2>
+        <button type="button" class="profile-modal-close" id="appLockModalClose" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div style="padding: 16px 20px;">
+        <div class="app-lock-setting-item">
+          <div class="app-lock-setting-label">
+            <span class="app-lock-label-title">Enable PIN Lock</span>
+            <span class="app-lock-label-desc">Require 4-digit PIN to open chat</span>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" id="appLockToggle" />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+
+        <div id="appLockConfigSection" style="display:none; margin-top: 14px;">
+          <div class="app-lock-setting-item">
+            <div class="app-lock-setting-label">
+              <span class="app-lock-label-title">Lock Delay</span>
+              <span class="app-lock-label-desc">When to re-lock the app</span>
+            </div>
+            <select id="appLockDelaySelect" style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 6px 10px; font-size: 13px; outline: none;">
+              <option value="0">Immediately</option>
+              <option value="60000">After 1 minute</option>
+              <option value="300000">After 5 minutes</option>
+            </select>
+          </div>
+
+          <div style="margin-top: 18px; display: flex; flex-direction: column; gap: 10px;">
+            <button type="button" id="changePinBtn" class="btn-profile-save" style="width: 100%; justify-content: center;">
+              <span>🔑 Change 4-Digit PIN</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- PIN Setup View inside modal (when setting or changing PIN) -->
+        <div id="appLockSetPinView" style="display:none; margin-top: 16px; text-align: center;">
+          <div id="appLockPinStepTitle" style="font-size: 14.5px; font-weight: 700; color: #fff; margin-bottom: 8px;">Enter New 4-Digit PIN</div>
+          <p id="appLockPinStepSub" style="font-size: 12px; color: rgba(255,255,255,0.6); margin-bottom: 16px;">Type 4 numbers for your secret PIN</p>
+          
+          <div class="app-lock-dots" id="setupPinDots">
+            <span class="app-lock-dot"></span>
+            <span class="app-lock-dot"></span>
+            <span class="app-lock-dot"></span>
+            <span class="app-lock-dot"></span>
+          </div>
+
+          <div class="app-lock-keypad" id="setupPinKeypad" style="max-width: 250px; margin: 0 auto 16px auto; gap: 12px 18px;">
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="1">1</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="2">2</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="3">3</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="4">4</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="5">5</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="6">6</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="7">7</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="8">8</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="9">9</button>
+            <button type="button" class="lock-num-btn btn-action" style="width:54px; height:54px;" data-k="cancel">Cancel</button>
+            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="0">0</button>
+            <button type="button" class="lock-num-btn btn-action" style="width:54px; height:54px;" data-k="back">⌫</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- Delete Message Modal -->
   <div class="modal-overlay" id="deleteMessageModal" role="dialog" aria-modal="true" aria-label="Delete message" style="display:none;">
     <div class="delete-modal-card">
@@ -1555,16 +1651,71 @@
     </button>
   </div>
 
+  <!-- Fullscreen App Lock Gate -->
+  <div id="appLockGate" class="app-lock-gate" style="display:none;" role="dialog" aria-modal="true" aria-label="App Lock">
+    <div class="app-lock-header">
+      <div class="app-lock-badge">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h2 class="app-lock-title">Chat ❤️ is Locked</h2>
+      <p class="app-lock-subtitle" id="appLockPromptText">Enter your 4-digit PIN</p>
+
+      <div class="app-lock-dots" id="gatePinDots">
+        <span class="app-lock-dot"></span>
+        <span class="app-lock-dot"></span>
+        <span class="app-lock-dot"></span>
+        <span class="app-lock-dot"></span>
+      </div>
+    </div>
+
+    <div class="app-lock-keypad" id="gatePinKeypad">
+      <button type="button" class="lock-num-btn" data-val="1">1</button>
+      <button type="button" class="lock-num-btn" data-val="2">2</button>
+      <button type="button" class="lock-num-btn" data-val="3">3</button>
+      <button type="button" class="lock-num-btn" data-val="4">4</button>
+      <button type="button" class="lock-num-btn" data-val="5">5</button>
+      <button type="button" class="lock-num-btn" data-val="6">6</button>
+      <button type="button" class="lock-num-btn" data-val="7">7</button>
+      <button type="button" class="lock-num-btn" data-val="8">8</button>
+      <button type="button" class="lock-num-btn" data-val="9">9</button>
+      <button type="button" class="lock-num-btn btn-action" data-val="clear">Clear</button>
+      <button type="button" class="lock-num-btn" data-val="0">0</button>
+      <button type="button" class="lock-num-btn btn-action" data-val="back">⌫</button>
+    </div>
+
+    <div class="app-lock-footer">
+      <button type="button" class="app-lock-emergency-logout" id="lockEmergencyLogoutBtn">Forgot PIN? Log out</button>
+    </div>
+  </div>
+
+  <!-- Floating PWA Install Banner -->
+  <div id="pwaInstallBanner" class="pwa-install-banner" style="display:none;" role="alert">
+    <div class="pwa-banner-icon">
+      <img src="/icons/icon-192.png" alt="App Icon" />
+    </div>
+    <div class="pwa-banner-info">
+      <div class="pwa-banner-title">Install Chat App ❤️</div>
+      <div class="pwa-banner-sub">Add to home screen for full-screen native feel</div>
+    </div>
+    <div class="pwa-banner-actions">
+      <button type="button" id="pwaBannerInstallBtn" class="btn-pwa-install">Install</button>
+      <button type="button" id="pwaBannerDismissBtn" class="btn-pwa-dismiss" aria-label="Dismiss">✕</button>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer" aria-live="assertive"></div>
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=50.0"></script>
-  <script src="/js/emoji.js?v=50.0"></script>
-  <script src="/js/media.js?v=50.0"></script>
-  <script src="/js/socket.js?v=50.0"></script>
-  <script src="/js/call.js?v=50.0"></script>
-  <script src="/js/chat.js?v=50.0"></script>
+  <script src="/js/ui.js?v=51.0"></script>
+  <script src="/js/emoji.js?v=51.0"></script>
+  <script src="/js/media.js?v=51.0"></script>
+  <script src="/js/socket.js?v=51.0"></script>
+  <script src="/js/call.js?v=51.0"></script>
+  <script src="/js/chat.js?v=51.0"></script>
 </body>
 </html>

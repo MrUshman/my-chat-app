@@ -175,6 +175,8 @@ async function init() {
   setupInChatSearch();
   setupScrollObserver();
   setupMobileBackButtonHandling();
+  setupPWAInstall();
+  setupAppLock();
 
   // Check if socket already received buffered partner status
   if (window._lastPartnerStatus) {
@@ -901,6 +903,7 @@ async function sendMessage() {
 
   // Play satisfying WhatsApp send pop tone
   playMessageSentSound();
+  UI.vibrate(15);
 
   // Generate a client-side ID to prevent duplicate rendering
   const clientMessageId = `client-${Date.now()}-${Math.random()}`;
@@ -1754,6 +1757,405 @@ function openProfileModal() {
 function closeProfileModal() {
   profileModal.style.display = 'none';
   selectedAvatarFile = null;
+}
+
+// ─── PWA Install & Native App Experience ─────────────────────────────
+
+let deferredInstallPrompt = null;
+let isPWASetupDone = false;
+
+function setupPWAInstall() {
+  if (isPWASetupDone) return;
+  isPWASetupDone = true;
+
+  // Always register Service Worker for PWA criteria & offline assets
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('SW registration:', err);
+    });
+  }
+
+  const pwaInstallMenuBtn = document.getElementById('pwaInstallMenuBtn');
+  const pwaInstallMenuText = document.getElementById('pwaInstallMenuText');
+  const pwaInstallBanner = document.getElementById('pwaInstallBanner');
+  const pwaBannerInstallBtn = document.getElementById('pwaBannerInstallBtn');
+  const pwaBannerDismissBtn = document.getElementById('pwaBannerDismissBtn');
+
+  // Check if running in standalone mode (already installed as PWA)
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+  if (isStandalone) {
+    if (pwaInstallMenuText) pwaInstallMenuText.textContent = 'App Installed ✓';
+    if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+  }
+
+  // Capture Chrome / Android beforeinstallprompt
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+
+    // Show floating banner if user hasn't explicitly dismissed it
+    const dismissed = localStorage.getItem('pwa_banner_dismissed') === 'true';
+    if (!isStandalone && !dismissed && pwaInstallBanner) {
+      setTimeout(() => {
+        if (!isStandalone && localStorage.getItem('pwa_banner_dismissed') !== 'true') {
+          pwaInstallBanner.style.display = 'flex';
+        }
+      }, 2500); // polite delay after page load
+    }
+  });
+
+  // When app is installed successfully
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+    if (pwaInstallMenuText) pwaInstallMenuText.textContent = 'App Installed ✓';
+    UI.showToast('Chat App Installed Successfully! ❤️', 'success');
+  });
+
+  // Floating banner Install button
+  pwaBannerInstallBtn?.addEventListener('click', async () => {
+    UI.vibrate(15);
+    if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice && choice.outcome === 'accepted') {
+        deferredInstallPrompt = null;
+      }
+    }
+  });
+
+  // Floating banner Dismiss button
+  pwaBannerDismissBtn?.addEventListener('click', () => {
+    UI.vibrate(10);
+    if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+    localStorage.setItem('pwa_banner_dismissed', 'true');
+  });
+
+  // Settings dropdown menu "Install App" button
+  pwaInstallMenuBtn?.addEventListener('click', async () => {
+    settingsDropdown.style.display = 'none';
+    settingsBtn.classList.remove('active');
+    document.body.classList.remove('menu-open');
+    UI.vibrate(15);
+
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+      UI.showToast('You are already using the installed App! ❤️', 'info');
+      return;
+    }
+
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice && choice.outcome === 'accepted') {
+        deferredInstallPrompt = null;
+      }
+    } else {
+      // If prompt is not available (e.g. iOS Safari or prompt already handled)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (isIOS) {
+        UI.showToast('iOS pe install karne ke liye: Share (⎋) dabayein aur "Add to Home Screen" chunein 📲', 'info', 5000);
+      } else {
+        UI.showToast('Chrome menu (⋮) dabayein aur "Install App" ya "Add to Home screen" chunein 📲', 'info', 4000);
+      }
+    }
+  });
+}
+
+// ─── App Lock (Native PIN Lock & Privacy) ─────────────────────────────
+
+let isAppLockSetupDone = false;
+
+function setupAppLock() {
+  if (isAppLockSetupDone) return;
+  isAppLockSetupDone = true;
+
+  const appLockMenuBtn = document.getElementById('appLockMenuBtn');
+  const appLockModal = document.getElementById('appLockModal');
+  const appLockModalClose = document.getElementById('appLockModalClose');
+  const appLockToggle = document.getElementById('appLockToggle');
+  const appLockConfigSection = document.getElementById('appLockConfigSection');
+  const appLockDelaySelect = document.getElementById('appLockDelaySelect');
+  const changePinBtn = document.getElementById('changePinBtn');
+  const appLockSetPinView = document.getElementById('appLockSetPinView');
+  const appLockPinStepTitle = document.getElementById('appLockPinStepTitle');
+  const setupPinDots = document.getElementById('setupPinDots');
+  const setupPinKeypad = document.getElementById('setupPinKeypad');
+
+  // Gate elements
+  const appLockGate = document.getElementById('appLockGate');
+  const gatePinDots = document.getElementById('gatePinDots');
+  const gatePinKeypad = document.getElementById('gatePinKeypad');
+  const lockEmergencyLogoutBtn = document.getElementById('lockEmergencyLogoutBtn');
+
+  let enteredGatePin = '';
+  let setupStep = 1; // 1 = enter new PIN, 2 = confirm new PIN
+  let tempNewPin = '';
+  let enteredSetupPin = '';
+  let isAppLocked = false;
+  let lastHiddenTimestamp = 0;
+
+  // Simple hash for PIN storage (obfuscation in localStorage)
+  function hashPin(pin) {
+    let hash = 0;
+    const str = `salt_chat_${pin}_love`;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return 'h_' + Math.abs(hash).toString(16);
+  }
+
+  // Check if App Lock is enabled
+  function isLockEnabled() {
+    return localStorage.getItem('chat_app_lock_enabled') === 'true' && !!localStorage.getItem('chat_app_pin');
+  }
+
+  // Update dots UI
+  function updateDots(container, count) {
+    if (!container) return;
+    const dots = container.querySelectorAll('.app-lock-dot');
+    dots.forEach((dot, idx) => {
+      dot.classList.toggle('filled', idx < count);
+    });
+  }
+
+  // Lock the app gate
+  function lockGate() {
+    if (!isLockEnabled()) return;
+    isAppLocked = true;
+    enteredGatePin = '';
+    updateDots(gatePinDots, 0);
+    if (appLockGate) {
+      appLockGate.style.display = 'flex';
+    }
+  }
+
+  // Unlock the app gate
+  function unlockGate() {
+    isAppLocked = false;
+    enteredGatePin = '';
+    if (appLockGate) {
+      appLockGate.style.display = 'none';
+    }
+  }
+
+  // Check if initially locked
+  if (isLockEnabled()) {
+    lockGate();
+  }
+
+  // Gate keypad button handler
+  gatePinKeypad?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lock-num-btn');
+    if (!btn) return;
+    UI.vibrate(12);
+    const val = btn.dataset.val;
+
+    if (val === 'clear') {
+      enteredGatePin = '';
+      updateDots(gatePinDots, 0);
+      return;
+    }
+    if (val === 'back') {
+      enteredGatePin = enteredGatePin.slice(0, -1);
+      updateDots(gatePinDots, enteredGatePin.length);
+      return;
+    }
+
+    if (enteredGatePin.length < 4) {
+      enteredGatePin += val;
+      updateDots(gatePinDots, enteredGatePin.length);
+
+      if (enteredGatePin.length === 4) {
+        // Validate PIN
+        const storedHash = localStorage.getItem('chat_app_pin');
+        if (hashPin(enteredGatePin) === storedHash) {
+          UI.vibrate([15, 30, 20]);
+          unlockGate();
+        } else {
+          UI.vibrate([50, 50, 50]);
+          gatePinDots?.classList.add('error');
+          setTimeout(() => {
+            gatePinDots?.classList.remove('error');
+            enteredGatePin = '';
+            updateDots(gatePinDots, 0);
+          }, 500);
+          UI.showToast('Incorrect PIN. Please try again.', 'error');
+        }
+      }
+    }
+  });
+
+  // Physical keyboard support for unlock gate
+  window.addEventListener('keydown', (e) => {
+    if (!isAppLocked || !appLockGate || appLockGate.style.display !== 'flex') return;
+    if (e.key >= '0' && e.key <= '9') {
+      const btn = gatePinKeypad?.querySelector(`.lock-num-btn[data-val="${e.key}"]`);
+      if (btn) btn.click();
+    } else if (e.key === 'Backspace') {
+      const backBtn = gatePinKeypad?.querySelector('.lock-num-btn[data-val="back"]');
+      if (backBtn) backBtn.click();
+    } else if (e.key === 'Escape') {
+      const clearBtn = gatePinKeypad?.querySelector('.lock-num-btn[data-val="clear"]');
+      if (clearBtn) clearBtn.click();
+    }
+  });
+
+  // Emergency logout if user forgot their PIN
+  lockEmergencyLogoutBtn?.addEventListener('click', () => {
+    if (confirm('Are you sure you want to log out? Your app lock will be reset on logout.')) {
+      localStorage.removeItem('chat_app_lock_enabled');
+      localStorage.removeItem('chat_app_pin');
+      logout();
+    }
+  });
+
+  // Re-lock when app goes to background / minimize
+  document.addEventListener('visibilitychange', () => {
+    if (!isLockEnabled()) return;
+    if (document.visibilityState === 'hidden') {
+      lastHiddenTimestamp = Date.now();
+    } else if (document.visibilityState === 'visible') {
+      const delay = parseInt(localStorage.getItem('chat_app_lock_delay') || '0', 10);
+      const elapsed = Date.now() - lastHiddenTimestamp;
+      if (lastHiddenTimestamp > 0 && elapsed >= delay) {
+        lockGate();
+      }
+    }
+  });
+
+  // ─── App Lock Settings Modal Handling ─────────────────────────────
+
+  function refreshSettingsModalState() {
+    const enabled = isLockEnabled();
+    if (appLockToggle) appLockToggle.checked = enabled;
+    if (appLockConfigSection) appLockConfigSection.style.display = enabled ? 'block' : 'none';
+    if (appLockSetPinView) appLockSetPinView.style.display = 'none';
+    if (appLockDelaySelect) {
+      appLockDelaySelect.value = localStorage.getItem('chat_app_lock_delay') || '0';
+    }
+  }
+
+  // Open App Lock settings modal
+  appLockMenuBtn?.addEventListener('click', () => {
+    settingsDropdown.style.display = 'none';
+    settingsBtn.classList.remove('active');
+    document.body.classList.remove('menu-open');
+    refreshSettingsModalState();
+    if (appLockModal) appLockModal.style.display = 'flex';
+  });
+
+  // Close modal
+  function closeAppLockModal() {
+    if (appLockModal) appLockModal.style.display = 'none';
+    if (appLockSetPinView) appLockSetPinView.style.display = 'none';
+  }
+  appLockModalClose?.addEventListener('click', closeAppLockModal);
+  appLockModal?.addEventListener('click', (e) => {
+    if (e.target === appLockModal) closeAppLockModal();
+  });
+
+  // Delay select change
+  appLockDelaySelect?.addEventListener('change', (e) => {
+    localStorage.setItem('chat_app_lock_delay', e.target.value);
+    UI.showToast('Lock delay saved 🔒', 'success');
+  });
+
+  // Start PIN setup workflow
+  function startPinSetup() {
+    setupStep = 1;
+    tempNewPin = '';
+    enteredSetupPin = '';
+    if (appLockPinStepTitle) appLockPinStepTitle.textContent = 'Enter New 4-Digit PIN';
+    updateDots(setupPinDots, 0);
+    if (appLockConfigSection) appLockConfigSection.style.display = 'none';
+    if (appLockSetPinView) appLockSetPinView.style.display = 'block';
+  }
+
+  // Toggle App Lock Switch
+  appLockToggle?.addEventListener('change', (e) => {
+    UI.vibrate(15);
+    if (e.target.checked) {
+      // Turning ON: if no PIN set, start setup
+      if (!localStorage.getItem('chat_app_pin')) {
+        startPinSetup();
+      } else {
+        localStorage.setItem('chat_app_lock_enabled', 'true');
+        refreshSettingsModalState();
+        UI.showToast('App Lock enabled 🔒', 'success');
+      }
+    } else {
+      // Turning OFF
+      localStorage.setItem('chat_app_lock_enabled', 'false');
+      refreshSettingsModalState();
+      UI.showToast('App Lock disabled', 'info');
+    }
+  });
+
+  // Change PIN button
+  changePinBtn?.addEventListener('click', () => {
+    UI.vibrate(15);
+    startPinSetup();
+  });
+
+  // Setup keypad handler
+  setupPinKeypad?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lock-num-btn');
+    if (!btn) return;
+    UI.vibrate(12);
+    const k = btn.dataset.k;
+
+    if (k === 'cancel') {
+      refreshSettingsModalState();
+      return;
+    }
+    if (k === 'back') {
+      enteredSetupPin = enteredSetupPin.slice(0, -1);
+      updateDots(setupPinDots, enteredSetupPin.length);
+      return;
+    }
+
+    if (enteredSetupPin.length < 4) {
+      enteredSetupPin += k;
+      updateDots(setupPinDots, enteredSetupPin.length);
+
+      if (enteredSetupPin.length === 4) {
+        if (setupStep === 1) {
+          // First step: save temp PIN and prompt for confirmation
+          tempNewPin = enteredSetupPin;
+          enteredSetupPin = '';
+          setupStep = 2;
+          setTimeout(() => {
+            if (appLockPinStepTitle) appLockPinStepTitle.textContent = 'Confirm Your 4-Digit PIN';
+            updateDots(setupPinDots, 0);
+          }, 200);
+        } else if (setupStep === 2) {
+          // Confirm step
+          if (enteredSetupPin === tempNewPin) {
+            UI.vibrate([20, 40, 20]);
+            localStorage.setItem('chat_app_pin', hashPin(enteredSetupPin));
+            localStorage.setItem('chat_app_lock_enabled', 'true');
+            UI.showToast('PIN set successfully! App Lock is now Active 🔒', 'success');
+            refreshSettingsModalState();
+          } else {
+            UI.vibrate([50, 50, 50]);
+            setupPinDots?.classList.add('error');
+            setTimeout(() => {
+              setupPinDots?.classList.remove('error');
+              enteredSetupPin = '';
+              setupStep = 1;
+              tempNewPin = '';
+              if (appLockPinStepTitle) appLockPinStepTitle.textContent = 'PIN mismatch! Enter New PIN';
+              updateDots(setupPinDots, 0);
+            }, 500);
+            UI.showToast('PINs did not match. Please try again.', 'error');
+          }
+        }
+      }
+    }
+  });
 }
 
 // ─── Partner Profile Visit System (WhatsApp Style) ───────────────────

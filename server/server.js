@@ -71,10 +71,15 @@ app.use(express.static(clientDir, {
   lastModified: true,
   maxAge: isProduction ? '1d' : 0,
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
-      // HTML and Service Worker are never cached so user always gets latest app updates
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.endsWith('manifest.json')) {
+      // HTML, Service Worker, and Manifest are never stale so user always gets latest app updates
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Service-Worker-Allowed', '/');
+      if (filePath.endsWith('sw.js')) {
+        res.setHeader('Service-Worker-Allowed', '/');
+      }
+      if (filePath.endsWith('manifest.json')) {
+        res.setHeader('Content-Type', 'application/manifest+json');
+      }
     } else {
       // JS, CSS, Media & Fonts cached for instant reload
       res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');

@@ -385,6 +385,20 @@ function autoResize(textarea) {
   }
 }
 
+// ─── Haptic Feedback (Native App Feel) ───────────────────────────
+
+/**
+ * Subtle vibration for native mobile app feel
+ * @param {number|number[]} pattern - ms duration or array of vibration/pause
+ */
+function vibrate(pattern = 15) {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate(pattern);
+    } catch (_) {}
+  }
+}
+
 // ─── Exports (module-style using window object) ───────────────────
 window.UI = {
   showToast,
@@ -397,4 +411,5 @@ window.UI = {
   formatLastSeen,
   formatDuration,
   autoResize,
+  vibrate,
 };
