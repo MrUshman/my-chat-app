@@ -365,10 +365,96 @@
   const activeCallPartnerName = document.getElementById('activeCallPartnerName');
   const callDurationTimer = document.getElementById('callDurationTimer');
 
-  // 1-second ultra-lightweight silent WAV to keep background audio session alive in Chrome/Android
-  const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+  // ─── 10-Second Continuous Silent PCM WAV & Web Audio Keep-Alive ─────────────
+  // Generates real continuous audio frames to maintain Android OS audio focus
+  // and prevent CPU sleep/mic suspension when screen locks or Chrome is minimized
+  function createSilentAudioBlobUrl(durationSec = 10, sampleRate = 8000) {
+    try {
+      const numSamples = durationSec * sampleRate;
+      const byteLength = numSamples * 2;
+      const buffer = new ArrayBuffer(44 + byteLength);
+      const view = new DataView(buffer);
+      function writeString(offset, str) {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+      }
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + byteLength, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, 1, true); // Mono
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(36, 'data');
+      view.setUint32(40, byteLength, true);
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const silentAudioBlobUrl = createSilentAudioBlobUrl(10, 8000);
   if (bgKeepAliveAudio) {
-    bgKeepAliveAudio.src = SILENT_WAV_BASE64;
+    if (silentAudioBlobUrl) {
+      bgKeepAliveAudio.src = silentAudioBlobUrl;
+    }
+    bgKeepAliveAudio.loop = true;
+    bgKeepAliveAudio.addEventListener('pause', () => {
+      if (callState === 'connected' && bgKeepAliveAudio.paused) {
+        bgKeepAliveAudio.play().catch(() => {});
+      }
+    });
+  }
+
+  let keepAliveAudioCtx = null;
+  let keepAliveOsc = null;
+  let keepAliveGain = null;
+
+  function startAudioKeepAlive() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!keepAliveAudioCtx || keepAliveAudioCtx.state === 'closed') {
+        keepAliveAudioCtx = new AudioCtx();
+      }
+      if (keepAliveAudioCtx.state === 'suspended') {
+        keepAliveAudioCtx.resume().catch(() => {});
+      }
+      if (!keepAliveOsc) {
+        keepAliveOsc = keepAliveAudioCtx.createOscillator();
+        keepAliveGain = keepAliveAudioCtx.createGain();
+        // 0.00005 amplitude: inaudible, but continuously feeds Android AudioFlinger
+        keepAliveGain.gain.value = 0.00005;
+        keepAliveOsc.frequency.value = 440;
+        keepAliveOsc.connect(keepAliveGain);
+        keepAliveGain.connect(keepAliveAudioCtx.destination);
+        keepAliveOsc.start();
+      }
+    } catch (e) {
+      console.warn('AudioContext keep-alive notice:', e);
+    }
+  }
+
+  function stopAudioKeepAlive() {
+    try {
+      if (keepAliveOsc) {
+        keepAliveOsc.stop();
+        keepAliveOsc.disconnect();
+        keepAliveOsc = null;
+      }
+      if (keepAliveGain) {
+        keepAliveGain.disconnect();
+        keepAliveGain = null;
+      }
+      if (keepAliveAudioCtx && keepAliveAudioCtx.state !== 'closed') {
+        keepAliveAudioCtx.close().catch(() => {});
+        keepAliveAudioCtx = null;
+      }
+    } catch (e) {}
   }
 
   // Active call controls & Minimization
@@ -1142,6 +1228,7 @@
     if (bgKeepAliveAudio) {
       bgKeepAliveAudio.play().catch(() => {});
     }
+    startAudioKeepAlive();
     // Update Android MediaSession for background calling notification
     updateMediaSession(partner);
     // Request Screen Wake Lock
@@ -1388,13 +1475,23 @@
         navigator.mediaSession.metadata = new MediaMetadata({
           title: callType === 'video' ? '📹 WhatsApp Video Call' : '📞 WhatsApp Voice Call',
           artist: partner?.displayName || 'Partner',
-          album: 'Background Voice Active',
+          album: 'Ongoing Call • Background Active',
           artwork: [
             { src: partner?.profileImage || createAvatarDataUrl(partner?.displayName), sizes: '192x192', type: 'image/png' },
+            { src: partner?.profileImage || createAvatarDataUrl(partner?.displayName), sizes: '512x512', type: 'image/png' },
           ],
         });
         navigator.mediaSession.playbackState = 'playing';
 
+        // Critical for Android Chrome: Register play & pause handlers so OS grants persistent foreground audio focus
+        navigator.mediaSession.setActionHandler('play', () => {
+          if (bgKeepAliveAudio && bgKeepAliveAudio.paused) bgKeepAliveAudio.play().catch(() => {});
+          if (remoteAudioPlayer && remoteAudioPlayer.paused) remoteAudioPlayer.play().catch(() => {});
+          if (keepAliveAudioCtx && keepAliveAudioCtx.state === 'suspended') keepAliveAudioCtx.resume().catch(() => {});
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          if (bgKeepAliveAudio && bgKeepAliveAudio.paused) bgKeepAliveAudio.play().catch(() => {});
+        });
         navigator.mediaSession.setActionHandler('hangup', () => {
           endCall(true);
         });
@@ -1628,6 +1725,7 @@
     if (bgKeepAliveAudio) {
       bgKeepAliveAudio.pause();
     }
+    stopAudioKeepAlive();
     releaseMediaSession();
     releaseWakeLock();
     if (iceDisconnectTimeout) {
@@ -2346,6 +2444,9 @@
 
     if (document.hidden) {
       console.log('📱 App moved to background - preserving mic & background audio');
+      if (keepAliveAudioCtx && keepAliveAudioCtx.state === 'suspended') {
+        keepAliveAudioCtx.resume().catch(() => {});
+      }
       if (bgKeepAliveAudio && bgKeepAliveAudio.paused) {
         bgKeepAliveAudio.play().catch(() => {});
       }
@@ -2368,8 +2469,18 @@
           audioTrack.enabled = true;
         }
       }
+
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
     } else {
       console.log('📱 App returned to foreground - restoring video display');
+      if (keepAliveAudioCtx && keepAliveAudioCtx.state === 'suspended') {
+        keepAliveAudioCtx.resume().catch(() => {});
+      }
+      if (bgKeepAliveAudio && bgKeepAliveAudio.paused) {
+        bgKeepAliveAudio.play().catch(() => {});
+      }
       if (callType === 'video' && localStream) {
         const videoTrack = localStream.getVideoTracks()[0];
         if (videoTrack && !callToggleVideoBtn?.classList.contains('btn-muted')) {

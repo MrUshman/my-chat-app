@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=49.0" />
-  <link rel="preload" href="/css/style.css?v=49.0" as="style" />
-  <link rel="preload" href="/js/chat.js?v=49.0" as="script" />
+  <link rel="stylesheet" href="/css/style.css?v=50.0" />
+  <link rel="preload" href="/css/style.css?v=50.0" as="style" />
+  <link rel="preload" href="/js/chat.js?v=50.0" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
     /* In-App Camera Mobile Guarantee */
@@ -1452,9 +1452,9 @@
     </div>
 
     <!-- Remote Audio Player (Used for P2P voice sound) -->
-    <audio id="remoteAudioPlayer" autoplay playsinline style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></audio>
+    <audio id="remoteAudioPlayer" autoplay playsinline style="position:fixed; top:-500px; left:-500px; width:20px; height:20px; opacity:1; pointer-events:none;"></audio>
     <!-- Background Audio Keep-Alive (Guarantees mic & audio stay alive when app is in background) -->
-    <audio id="bgKeepAliveAudio" loop playsinline style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></audio>
+    <audio id="bgKeepAliveAudio" loop playsinline style="position:fixed; top:-500px; left:-500px; width:20px; height:20px; opacity:1; pointer-events:none;"></audio>
 
     <!-- In-Call Control Pill Bar (Bottom) -->
     <div class="active-call-controls-bar">
@@ -1560,11 +1560,11 @@
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=49.0"></script>
-  <script src="/js/emoji.js?v=49.0"></script>
-  <script src="/js/media.js?v=49.0"></script>
-  <script src="/js/socket.js?v=49.0"></script>
-  <script src="/js/call.js?v=49.0"></script>
-  <script src="/js/chat.js?v=49.0"></script>
+  <script src="/js/ui.js?v=50.0"></script>
+  <script src="/js/emoji.js?v=50.0"></script>
+  <script src="/js/media.js?v=50.0"></script>
+  <script src="/js/socket.js?v=50.0"></script>
+  <script src="/js/call.js?v=50.0"></script>
+  <script src="/js/chat.js?v=50.0"></script>
 </body>
 </html>
