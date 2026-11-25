@@ -2,7 +2,7 @@
 
 // sw.js — Service Worker for PWA Offline Caching & Notifications
 
-const CACHE_NAME = 'chat-pwa-v3';
+const CACHE_NAME = 'chat-pwa-v4';
 
 // Core shell assets to pre-cache on install
 const PRECACHE_ASSETS = [
@@ -107,14 +107,35 @@ self.addEventListener('fetch', (event) => {
 
 // Handle notification click — open or focus the chat window
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const notif = event.notification;
+  const action = event.action;
+  const tag = notif.tag;
+  const notifData = notif.data || {};
+
+  notif.close();
+
+  // If user tapped "End Call" on ongoing call notification
+  if (action === 'hangup') {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          client.postMessage({ type: 'HANGUP_CALL' });
+        }
+      })
+    );
+    return;
+  }
+
+  const targetUrl = notifData.url || '/';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if (client.url && (client.url.includes('/index.html') || client.url.endsWith('/'))) {
           if ('focus' in client) {
+            if (tag === 'active-ongoing-call' || notifData.type === 'ongoing_call') {
+              client.postMessage({ type: 'RESTORE_CALL' });
+            }
             return client.focus();
           }
         }

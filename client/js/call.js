@@ -397,6 +397,62 @@
     }
   }
 
+  // ─── Ongoing Active Call System Notification (WhatsApp Style) ──────────────
+  let lastOngoingNotifTime = 0;
+
+  function showOngoingCallNotification(duration) {
+    if (callState !== 'connected') return;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const partner = getPartnerInfo();
+    const isVideo = callType === 'video';
+    const timeStr = duration || formatDuration(callSecondsElapsed) || '00:00';
+    const title = `${isVideo ? '📹' : '📞'} Call in progress (${timeStr})`;
+    const body = `${partner.displayName || 'Partner'} • Tap to return to call ❤️`;
+
+    const options = {
+      body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: 'active-ongoing-call',
+      renotify: false,
+      silent: true,
+      requireInteraction: true,
+      data: { url: '/', type: 'ongoing_call' },
+      actions: [
+        { action: 'return', title: '📲 Open Call' },
+        { action: 'hangup', title: '🔴 End Call' }
+      ]
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.showNotification(title, options).catch(() => {});
+      }).catch(() => {});
+    } else {
+      try {
+        new Notification(title, options);
+      } catch (_) {}
+    }
+  }
+
+  function updateOngoingCallNotification(duration) {
+    const now = Date.now();
+    if (now - lastOngoingNotifTime < 4500) return;
+    lastOngoingNotifTime = now;
+    showOngoingCallNotification(duration);
+  }
+
+  function dismissOngoingCallNotification() {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.getNotifications({ tag: 'active-ongoing-call' }).then((notifs) => {
+          notifs.forEach((n) => n.close());
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }
+
   function getCurrentUserId() {
     let u = null;
     if (typeof window.getCurrentUser === 'function') {
@@ -651,6 +707,9 @@
       }
       if (floatingPipTimer) {
         floatingPipTimer.textContent = formatted;
+      }
+      if ((document.hidden || isCallMinimized) && callState === 'connected') {
+        updateOngoingCallNotification(formatted);
       }
     }, 1000);
   }
@@ -1475,6 +1534,9 @@
       resetFloatingPipPosition();
     }
 
+    // Show persistent ongoing call notification outside app
+    showOngoingCallNotification(formatted);
+
     if (window.UI?.showToast) {
       window.UI.showToast(
         callType === 'video' ? 'Video call running in background' : 'Voice call running in background',
@@ -1757,6 +1819,7 @@
 
   function cleanupCallState() {
     dismissIncomingCallNotification();
+    dismissOngoingCallNotification();
     callState = 'idle';
     incomingOfferData = null;
     currentCallerId = null;
@@ -2512,6 +2575,17 @@
     // Background App Switching (Preserve Mic & Audio when leaving Chrome/switching apps)
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // Service Worker message listener for Ongoing Call notifications (WhatsApp style)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.type === 'HANGUP_CALL') {
+          endCall(true);
+        } else if (event.data?.type === 'RESTORE_CALL') {
+          restoreCallFullscreen();
+        }
+      });
+    }
+
     // Initialize Draggable PiP & Screen Tap Immersion
     initDraggablePip();
     initDraggableFloatingPip();
@@ -2527,6 +2601,7 @@
 
     if (document.hidden) {
       console.log('📱 App moved to background - preserving mic & background audio');
+      showOngoingCallNotification();
       if (keepAliveAudioCtx && keepAliveAudioCtx.state === 'suspended') {
         keepAliveAudioCtx.resume().catch(() => {});
       }
@@ -2558,6 +2633,7 @@
       }
     } else {
       console.log('📱 App returned to foreground - restoring video display');
+      dismissOngoingCallNotification();
       if (keepAliveAudioCtx && keepAliveAudioCtx.state === 'suspended') {
         keepAliveAudioCtx.resume().catch(() => {});
       }
