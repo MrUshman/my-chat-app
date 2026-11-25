@@ -178,6 +178,13 @@ async function init() {
   setupPWAInstall();
   setupAppLock();
 
+  // Clear unread badge when user opens/focuses app
+  window.addEventListener('focus', () => {
+    if ('clearAppBadge' in navigator) {
+      navigator.clearAppBadge().catch(() => {});
+    }
+  });
+
   // Check if socket already received buffered partner status
   if (window._lastPartnerStatus) {
     if (window._lastPartnerStatus.partner) updatePartnerInfo(window._lastPartnerStatus.partner);
@@ -1109,14 +1116,21 @@ async function showNotificationIfHidden(msg) {
   const title = `${senderName} ❤️`;
   const options = {
     body: bodyText,
-    icon: '/favicon.ico',
-    badge: '/favicon.ico',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
     tag: 'chat-msg-' + (msg._id || Date.now()),
     renotify: true,
-    data: { url: '/index.html' },
+    vibrate: [200, 100, 200],
+    data: { url: '/' },
   };
 
   playNotificationChime();
+
+  // Update App Badge counter on mobile home screen
+  if ('setAppBadge' in navigator) {
+    unreadCount = (unreadCount || 0) + 1;
+    navigator.setAppBadge(unreadCount).catch(() => {});
+  }
 
   // 1. Mobile Android / Service Worker Notification (Primary for mobile)
   if ('serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
@@ -1863,9 +1877,15 @@ function setupPWAInstall() {
   });
 }
 
-// ─── App Lock (Native PIN Lock & Privacy) ─────────────────────────────
+// ─── Biometric Fingerprint Lock (Installed App Only) ─────────────────
 
 let isAppLockSetupDone = false;
+
+function isRunningAsInstalledApp() {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.navigator.standalone === true ||
+         document.referrer.includes('android-app://');
+}
 
 function setupAppLock() {
   if (isAppLockSetupDone) return;
@@ -1877,148 +1897,157 @@ function setupAppLock() {
   const appLockToggle = document.getElementById('appLockToggle');
   const appLockConfigSection = document.getElementById('appLockConfigSection');
   const appLockDelaySelect = document.getElementById('appLockDelaySelect');
-  const changePinBtn = document.getElementById('changePinBtn');
-  const appLockSetPinView = document.getElementById('appLockSetPinView');
-  const appLockPinStepTitle = document.getElementById('appLockPinStepTitle');
-  const setupPinDots = document.getElementById('setupPinDots');
-  const setupPinKeypad = document.getElementById('setupPinKeypad');
+  const testFingerprintBtn = document.getElementById('testFingerprintBtn');
 
   // Gate elements
   const appLockGate = document.getElementById('appLockGate');
-  const gatePinDots = document.getElementById('gatePinDots');
-  const gatePinKeypad = document.getElementById('gatePinKeypad');
-  const lockEmergencyLogoutBtn = document.getElementById('lockEmergencyLogoutBtn');
+  const bioSensorBtn = document.getElementById('bioSensorBtn');
+  const triggerBioScanBtn = document.getElementById('triggerBioScanBtn');
+  const bioStatusMsg = document.getElementById('bioStatusMsg');
+  const lockBypassBtn = document.getElementById('lockBypassBtn');
 
-  let enteredGatePin = '';
-  let setupStep = 1; // 1 = enter new PIN, 2 = confirm new PIN
-  let tempNewPin = '';
-  let enteredSetupPin = '';
   let isAppLocked = false;
   let lastHiddenTimestamp = 0;
 
-  // Simple hash for PIN storage (obfuscation in localStorage)
-  function hashPin(pin) {
-    let hash = 0;
-    const str = `salt_chat_${pin}_love`;
-    for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
-      hash |= 0;
-    }
-    return 'h_' + Math.abs(hash).toString(16);
+  function isBioLockEnabled() {
+    return localStorage.getItem('chat_bio_lock_enabled') === 'true';
   }
 
-  // Check if App Lock is enabled
-  function isLockEnabled() {
-    return localStorage.getItem('chat_app_lock_enabled') === 'true' && !!localStorage.getItem('chat_app_pin');
+  function setBioStatus(text) {
+    if (bioStatusMsg) bioStatusMsg.textContent = text;
   }
 
-  // Update dots UI
-  function updateDots(container, count) {
-    if (!container) return;
-    const dots = container.querySelectorAll('.app-lock-dot');
-    dots.forEach((dot, idx) => {
-      dot.classList.toggle('filled', idx < count);
-    });
-  }
-
-  // Lock the app gate
   function lockGate() {
-    if (!isLockEnabled()) return;
+    // STRICT RULE: Only lock when opened as installed App, NEVER on Chrome website!
+    if (!isRunningAsInstalledApp()) return;
+    if (!isBioLockEnabled()) return;
+
     isAppLocked = true;
-    enteredGatePin = '';
-    updateDots(gatePinDots, 0);
+    setBioStatus('Touch sensor or tap below');
     if (appLockGate) {
       appLockGate.style.display = 'flex';
     }
+
+    // Auto-prompt biometric sensor after short render delay
+    setTimeout(() => {
+      if (isAppLocked) triggerBiometricAuth(false);
+    }, 350);
   }
 
-  // Unlock the app gate
   function unlockGate() {
     isAppLocked = false;
-    enteredGatePin = '';
     if (appLockGate) {
       appLockGate.style.display = 'none';
     }
+    UI.vibrate([15, 30, 20]);
   }
 
-  // Check if initially locked
-  if (isLockEnabled()) {
+  // Check lock on initial launch
+  if (isRunningAsInstalledApp() && isBioLockEnabled()) {
     lockGate();
   }
 
-  // Gate keypad button handler
-  gatePinKeypad?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.lock-num-btn');
-    if (!btn) return;
-    UI.vibrate(12);
-    const val = btn.dataset.val;
+  // Native Biometric Authentication using WebAuthn / Platform Authenticator
+  async function triggerBiometricAuth(showToasts = true) {
+    setBioStatus('Scanning fingerprint...');
+    UI.vibrate(15);
 
-    if (val === 'clear') {
-      enteredGatePin = '';
-      updateDots(gatePinDots, 0);
-      return;
-    }
-    if (val === 'back') {
-      enteredGatePin = enteredGatePin.slice(0, -1);
-      updateDots(gatePinDots, enteredGatePin.length);
+    if (!window.PublicKeyCredential) {
+      if (showToasts) UI.showToast('Phone does not support WebAuthn. Unlocking...', 'info');
+      unlockGate();
       return;
     }
 
-    if (enteredGatePin.length < 4) {
-      enteredGatePin += val;
-      updateDots(gatePinDots, enteredGatePin.length);
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      let credId = localStorage.getItem('chat_bio_cred_id');
 
-      if (enteredGatePin.length === 4) {
-        // Validate PIN
-        const storedHash = localStorage.getItem('chat_app_pin');
-        if (hashPin(enteredGatePin) === storedHash) {
-          UI.vibrate([15, 30, 20]);
+      if (!credId) {
+        // Register device biometric credential on first scan
+        const userId = new Uint8Array(16);
+        window.crypto.getRandomValues(userId);
+
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge,
+            rp: { name: 'Chat ❤️' },
+            user: {
+              id: userId,
+              name: currentUser?.username || 'user',
+              displayName: currentUser?.displayName || 'Chat User'
+            },
+            pubKeyCredParams: [
+              { type: 'public-key', alg: -7 },
+              { type: 'public-key', alg: -257 }
+            ],
+            authenticatorSelection: {
+              authenticatorAttachment: 'platform',
+              userVerification: 'required'
+            },
+            timeout: 60000
+          }
+        });
+
+        if (credential) {
+          const rawIdStr = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)));
+          localStorage.setItem('chat_bio_cred_id', rawIdStr);
+          setBioStatus('Fingerprint verified! ✓');
+          if (showToasts) UI.showToast('Fingerprint Registered & Verified! 👆', 'success');
           unlockGate();
-        } else {
-          UI.vibrate([50, 50, 50]);
-          gatePinDots?.classList.add('error');
-          setTimeout(() => {
-            gatePinDots?.classList.remove('error');
-            enteredGatePin = '';
-            updateDots(gatePinDots, 0);
-          }, 500);
-          UI.showToast('Incorrect PIN. Please try again.', 'error');
+          return;
+        }
+      } else {
+        // Verify registered fingerprint
+        const rawIdBytes = Uint8Array.from(atob(credId), c => c.charCodeAt(0));
+        const assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge,
+            allowCredentials: [{
+              id: rawIdBytes,
+              type: 'public-key',
+              transports: ['internal']
+            }],
+            userVerification: 'required',
+            timeout: 60000
+          }
+        });
+
+        if (assertion) {
+          setBioStatus('Fingerprint verified! ✓');
+          if (showToasts) UI.showToast('Unlocked with Fingerprint! 👆', 'success');
+          unlockGate();
+          return;
         }
       }
+    } catch (err) {
+      console.warn('Biometric auth error/cancel:', err);
+      if (err.name === 'NotAllowedError') {
+        setBioStatus('Cancelled. Tap sensor icon to try again.');
+      } else {
+        setBioStatus('Tap sensor or button to unlock.');
+      }
     }
+  }
+
+  // Sensor tap handlers
+  bioSensorBtn?.addEventListener('click', () => triggerBiometricAuth(true));
+  triggerBioScanBtn?.addEventListener('click', () => triggerBiometricAuth(true));
+
+  // Bypass / Fallback unlock button
+  lockBypassBtn?.addEventListener('click', () => {
+    unlockGate();
   });
 
-  // Physical keyboard support for unlock gate
-  window.addEventListener('keydown', (e) => {
-    if (!isAppLocked || !appLockGate || appLockGate.style.display !== 'flex') return;
-    if (e.key >= '0' && e.key <= '9') {
-      const btn = gatePinKeypad?.querySelector(`.lock-num-btn[data-val="${e.key}"]`);
-      if (btn) btn.click();
-    } else if (e.key === 'Backspace') {
-      const backBtn = gatePinKeypad?.querySelector('.lock-num-btn[data-val="back"]');
-      if (backBtn) backBtn.click();
-    } else if (e.key === 'Escape') {
-      const clearBtn = gatePinKeypad?.querySelector('.lock-num-btn[data-val="clear"]');
-      if (clearBtn) clearBtn.click();
-    }
-  });
-
-  // Emergency logout if user forgot their PIN
-  lockEmergencyLogoutBtn?.addEventListener('click', () => {
-    if (confirm('Are you sure you want to log out? Your app lock will be reset on logout.')) {
-      localStorage.removeItem('chat_app_lock_enabled');
-      localStorage.removeItem('chat_app_pin');
-      logout();
-    }
-  });
-
-  // Re-lock when app goes to background / minimize
+  // Re-lock when app goes to background / minimize (Installed app only)
   document.addEventListener('visibilitychange', () => {
-    if (!isLockEnabled()) return;
+    if (!isRunningAsInstalledApp()) return;
+    if (!isBioLockEnabled()) return;
+
     if (document.visibilityState === 'hidden') {
       lastHiddenTimestamp = Date.now();
     } else if (document.visibilityState === 'visible') {
-      const delay = parseInt(localStorage.getItem('chat_app_lock_delay') || '0', 10);
+      const delay = parseInt(localStorage.getItem('chat_bio_lock_delay') || '0', 10);
       const elapsed = Date.now() - lastHiddenTimestamp;
       if (lastHiddenTimestamp > 0 && elapsed >= delay) {
         lockGate();
@@ -2026,19 +2055,17 @@ function setupAppLock() {
     }
   });
 
-  // ─── App Lock Settings Modal Handling ─────────────────────────────
+  // ─── Settings Modal ───────────────────────────────────────────────
 
   function refreshSettingsModalState() {
-    const enabled = isLockEnabled();
+    const enabled = isBioLockEnabled();
     if (appLockToggle) appLockToggle.checked = enabled;
     if (appLockConfigSection) appLockConfigSection.style.display = enabled ? 'block' : 'none';
-    if (appLockSetPinView) appLockSetPinView.style.display = 'none';
     if (appLockDelaySelect) {
-      appLockDelaySelect.value = localStorage.getItem('chat_app_lock_delay') || '0';
+      appLockDelaySelect.value = localStorage.getItem('chat_bio_lock_delay') || '0';
     }
   }
 
-  // Open App Lock settings modal
   appLockMenuBtn?.addEventListener('click', () => {
     settingsDropdown.style.display = 'none';
     settingsBtn.classList.remove('active');
@@ -2047,114 +2074,34 @@ function setupAppLock() {
     if (appLockModal) appLockModal.style.display = 'flex';
   });
 
-  // Close modal
   function closeAppLockModal() {
     if (appLockModal) appLockModal.style.display = 'none';
-    if (appLockSetPinView) appLockSetPinView.style.display = 'none';
   }
   appLockModalClose?.addEventListener('click', closeAppLockModal);
   appLockModal?.addEventListener('click', (e) => {
     if (e.target === appLockModal) closeAppLockModal();
   });
 
-  // Delay select change
   appLockDelaySelect?.addEventListener('change', (e) => {
-    localStorage.setItem('chat_app_lock_delay', e.target.value);
-    UI.showToast('Lock delay saved 🔒', 'success');
+    localStorage.setItem('chat_bio_lock_delay', e.target.value);
+    UI.showToast('Auto-lock delay saved 🔒', 'success');
   });
 
-  // Start PIN setup workflow
-  function startPinSetup() {
-    setupStep = 1;
-    tempNewPin = '';
-    enteredSetupPin = '';
-    if (appLockPinStepTitle) appLockPinStepTitle.textContent = 'Enter New 4-Digit PIN';
-    updateDots(setupPinDots, 0);
-    if (appLockConfigSection) appLockConfigSection.style.display = 'none';
-    if (appLockSetPinView) appLockSetPinView.style.display = 'block';
-  }
-
-  // Toggle App Lock Switch
   appLockToggle?.addEventListener('change', (e) => {
     UI.vibrate(15);
-    if (e.target.checked) {
-      // Turning ON: if no PIN set, start setup
-      if (!localStorage.getItem('chat_app_pin')) {
-        startPinSetup();
-      } else {
-        localStorage.setItem('chat_app_lock_enabled', 'true');
-        refreshSettingsModalState();
-        UI.showToast('App Lock enabled 🔒', 'success');
-      }
+    const checked = e.target.checked;
+    localStorage.setItem('chat_bio_lock_enabled', checked ? 'true' : 'false');
+    refreshSettingsModalState();
+    if (checked) {
+      UI.showToast('Fingerprint Lock enabled for Installed App 👆', 'success');
+      triggerBiometricAuth(true);
     } else {
-      // Turning OFF
-      localStorage.setItem('chat_app_lock_enabled', 'false');
-      refreshSettingsModalState();
-      UI.showToast('App Lock disabled', 'info');
+      UI.showToast('Fingerprint Lock disabled', 'info');
     }
   });
 
-  // Change PIN button
-  changePinBtn?.addEventListener('click', () => {
-    UI.vibrate(15);
-    startPinSetup();
-  });
-
-  // Setup keypad handler
-  setupPinKeypad?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.lock-num-btn');
-    if (!btn) return;
-    UI.vibrate(12);
-    const k = btn.dataset.k;
-
-    if (k === 'cancel') {
-      refreshSettingsModalState();
-      return;
-    }
-    if (k === 'back') {
-      enteredSetupPin = enteredSetupPin.slice(0, -1);
-      updateDots(setupPinDots, enteredSetupPin.length);
-      return;
-    }
-
-    if (enteredSetupPin.length < 4) {
-      enteredSetupPin += k;
-      updateDots(setupPinDots, enteredSetupPin.length);
-
-      if (enteredSetupPin.length === 4) {
-        if (setupStep === 1) {
-          // First step: save temp PIN and prompt for confirmation
-          tempNewPin = enteredSetupPin;
-          enteredSetupPin = '';
-          setupStep = 2;
-          setTimeout(() => {
-            if (appLockPinStepTitle) appLockPinStepTitle.textContent = 'Confirm Your 4-Digit PIN';
-            updateDots(setupPinDots, 0);
-          }, 200);
-        } else if (setupStep === 2) {
-          // Confirm step
-          if (enteredSetupPin === tempNewPin) {
-            UI.vibrate([20, 40, 20]);
-            localStorage.setItem('chat_app_pin', hashPin(enteredSetupPin));
-            localStorage.setItem('chat_app_lock_enabled', 'true');
-            UI.showToast('PIN set successfully! App Lock is now Active 🔒', 'success');
-            refreshSettingsModalState();
-          } else {
-            UI.vibrate([50, 50, 50]);
-            setupPinDots?.classList.add('error');
-            setTimeout(() => {
-              setupPinDots?.classList.remove('error');
-              enteredSetupPin = '';
-              setupStep = 1;
-              tempNewPin = '';
-              if (appLockPinStepTitle) appLockPinStepTitle.textContent = 'PIN mismatch! Enter New PIN';
-              updateDots(setupPinDots, 0);
-            }, 500);
-            UI.showToast('PINs did not match. Please try again.', 'error');
-          }
-        }
-      }
-    }
+  testFingerprintBtn?.addEventListener('click', () => {
+    triggerBiometricAuth(true);
   });
 }
 

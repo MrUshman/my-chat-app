@@ -2,7 +2,7 @@
 
 // sw.js — Service Worker for PWA Offline Caching & Notifications
 
-const CACHE_NAME = 'chat-pwa-v2';
+const CACHE_NAME = 'chat-pwa-v3';
 
 // Core shell assets to pre-cache on install
 const PRECACHE_ASSETS = [

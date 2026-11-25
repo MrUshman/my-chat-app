@@ -16,9 +16,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=51.0" />
-  <link rel="preload" href="/css/style.css?v=51.0" as="style" />
-  <link rel="preload" href="/js/chat.js?v=51.0" as="script" />
+  <link rel="stylesheet" href="/css/style.css?v=52.0" />
+  <link rel="preload" href="/css/style.css?v=52.0" as="style" />
+  <link rel="preload" href="/js/chat.js?v=52.0" as="script" />
   <link rel="preload" href="/socket.io/socket.io.js" as="script" />
   <style>
     /* In-App Camera Mobile Guarantee */
@@ -676,10 +676,13 @@
           </button>
           <button id="appLockMenuBtn" class="dropdown-item" role="menuitem">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              <path d="M12 12c0-3 2.5-5.5 5.5-5.5"></path>
+              <path d="M12 16c-2.2 0-4-1.8-4-4 0-1.8 1.2-3.3 2.8-3.8"></path>
+              <path d="M16 12c0 2.2-1.8 4-4 4-.9 0-1.7-.3-2.4-.8"></path>
+              <path d="M20 12c0-4.4-3.6-8-8-8s-8 3.6-8 8c0 2.2.9 4.2 2.3 5.7"></path>
+              <path d="M7 12c0-2.8 2.2-5 5-5"></path>
             </svg>
-            <span>App Lock 🔒</span>
+            <span>Fingerprint Lock 👆</span>
           </button>
           <div class="dropdown-divider"></div>
           <button id="logoutBtn" class="dropdown-item logout-item" role="menuitem">
@@ -1145,11 +1148,11 @@
     </div>
   </div>
 
-  <!-- App Lock Settings Modal -->
-  <div class="modal-overlay" id="appLockModal" role="dialog" aria-modal="true" aria-label="App Lock Settings" style="display:none;">
-    <div class="profile-modal-card" style="max-width: 360px;">
+  <!-- Fingerprint App Lock Settings Modal -->
+  <div class="modal-overlay" id="appLockModal" role="dialog" aria-modal="true" aria-label="Fingerprint Lock Settings" style="display:none;">
+    <div class="profile-modal-card" style="max-width: 380px;">
       <div class="profile-modal-header">
-        <h2 class="profile-modal-title">🔒 App Lock & Privacy</h2>
+        <h2 class="profile-modal-title">👆 Fingerprint Screen Lock</h2>
         <button type="button" class="profile-modal-close" id="appLockModalClose" aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
@@ -1158,8 +1161,8 @@
       <div style="padding: 16px 20px;">
         <div class="app-lock-setting-item">
           <div class="app-lock-setting-label">
-            <span class="app-lock-label-title">Enable PIN Lock</span>
-            <span class="app-lock-label-desc">Require 4-digit PIN to open chat</span>
+            <span class="app-lock-label-title">Phone Fingerprint Lock</span>
+            <span class="app-lock-label-desc">Lock installed app with your phone's fingerprint sensor</span>
           </div>
           <label class="switch-control">
             <input type="checkbox" id="appLockToggle" />
@@ -1167,11 +1170,17 @@
           </label>
         </div>
 
-        <div id="appLockConfigSection" style="display:none; margin-top: 14px;">
+        <div style="margin: 12px 0 16px 0; padding: 10px 12px; background: rgba(139, 92, 246, 0.12); border-radius: 10px; border: 1px solid rgba(139, 92, 246, 0.25);">
+          <p style="font-size: 11.5px; color: rgba(255,255,255,0.75); line-height: 1.45;">
+            🛡️ <b>Installed App Only:</b> Yeh lock sirf tab aayega jab aap App install karke chalayenge. Chrome website view me direct chat khulegi bina kisi lock ke.
+          </p>
+        </div>
+
+        <div id="appLockConfigSection" style="display:none;">
           <div class="app-lock-setting-item">
             <div class="app-lock-setting-label">
-              <span class="app-lock-label-title">Lock Delay</span>
-              <span class="app-lock-label-desc">When to re-lock the app</span>
+              <span class="app-lock-label-title">Auto-Lock Delay</span>
+              <span class="app-lock-label-desc">When to re-lock after minimizing</span>
             </div>
             <select id="appLockDelaySelect" style="background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 6px 10px; font-size: 13px; outline: none;">
               <option value="0">Immediately</option>
@@ -1180,41 +1189,12 @@
             </select>
           </div>
 
-          <div style="margin-top: 18px; display: flex; flex-direction: column; gap: 10px;">
-            <button type="button" id="changePinBtn" class="btn-profile-save" style="width: 100%; justify-content: center;">
-              <span>🔑 Change 4-Digit PIN</span>
+          <div style="margin-top: 18px;">
+            <button type="button" id="testFingerprintBtn" class="btn-profile-save" style="width: 100%; justify-content: center;">
+              <span>👆 Test Fingerprint Sensor</span>
             </button>
           </div>
         </div>
-
-        <!-- PIN Setup View inside modal (when setting or changing PIN) -->
-        <div id="appLockSetPinView" style="display:none; margin-top: 16px; text-align: center;">
-          <div id="appLockPinStepTitle" style="font-size: 14.5px; font-weight: 700; color: #fff; margin-bottom: 8px;">Enter New 4-Digit PIN</div>
-          <p id="appLockPinStepSub" style="font-size: 12px; color: rgba(255,255,255,0.6); margin-bottom: 16px;">Type 4 numbers for your secret PIN</p>
-          
-          <div class="app-lock-dots" id="setupPinDots">
-            <span class="app-lock-dot"></span>
-            <span class="app-lock-dot"></span>
-            <span class="app-lock-dot"></span>
-            <span class="app-lock-dot"></span>
-          </div>
-
-          <div class="app-lock-keypad" id="setupPinKeypad" style="max-width: 250px; margin: 0 auto 16px auto; gap: 12px 18px;">
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="1">1</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="2">2</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="3">3</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="4">4</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="5">5</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="6">6</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="7">7</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="8">8</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="9">9</button>
-            <button type="button" class="lock-num-btn btn-action" style="width:54px; height:54px;" data-k="cancel">Cancel</button>
-            <button type="button" class="lock-num-btn" style="width:54px; height:54px; font-size:20px;" data-k="0">0</button>
-            <button type="button" class="lock-num-btn btn-action" style="width:54px; height:54px;" data-k="back">⌫</button>
-          </div>
-        </div>
-
       </div>
     </div>
   </div>
@@ -1651,8 +1631,8 @@
     </button>
   </div>
 
-  <!-- Fullscreen App Lock Gate -->
-  <div id="appLockGate" class="app-lock-gate" style="display:none;" role="dialog" aria-modal="true" aria-label="App Lock">
+  <!-- Fullscreen Biometric Fingerprint Gate (Installed App Only) -->
+  <div id="appLockGate" class="app-lock-gate" style="display:none;" role="dialog" aria-modal="true" aria-label="Fingerprint Lock">
     <div class="app-lock-header">
       <div class="app-lock-badge">
         <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1661,33 +1641,34 @@
         </svg>
       </div>
       <h2 class="app-lock-title">Chat ❤️ is Locked</h2>
-      <p class="app-lock-subtitle" id="appLockPromptText">Enter your 4-digit PIN</p>
+      <p class="app-lock-subtitle" id="appLockPromptText">Scan your fingerprint to unlock</p>
+    </div>
 
-      <div class="app-lock-dots" id="gatePinDots">
-        <span class="app-lock-dot"></span>
-        <span class="app-lock-dot"></span>
-        <span class="app-lock-dot"></span>
-        <span class="app-lock-dot"></span>
+    <!-- Interactive Glowing Fingerprint Sensor -->
+    <div class="bio-sensor-wrapper" id="bioSensorBtn" role="button" tabindex="0" title="Tap to scan fingerprint">
+      <div class="bio-sensor-pulse"></div>
+      <div class="bio-sensor-circle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 12c0-3 2.5-5.5 5.5-5.5"></path>
+          <path d="M12 16c-2.2 0-4-1.8-4-4 0-1.8 1.2-3.3 2.8-3.8"></path>
+          <path d="M16 12c0 2.2-1.8 4-4 4-.9 0-1.7-.3-2.4-.8"></path>
+          <path d="M20 12c0-4.4-3.6-8-8-8s-8 3.6-8 8c0 2.2.9 4.2 2.3 5.7"></path>
+          <path d="M7 12c0-2.8 2.2-5 5-5"></path>
+          <path d="M12 20c-1.3 0-2.5-.4-3.5-1.1"></path>
+          <path d="M12 2c5.5 0 10 4.5 10 10 0 3.2-1.5 6-3.8 7.8"></path>
+        </svg>
       </div>
     </div>
 
-    <div class="app-lock-keypad" id="gatePinKeypad">
-      <button type="button" class="lock-num-btn" data-val="1">1</button>
-      <button type="button" class="lock-num-btn" data-val="2">2</button>
-      <button type="button" class="lock-num-btn" data-val="3">3</button>
-      <button type="button" class="lock-num-btn" data-val="4">4</button>
-      <button type="button" class="lock-num-btn" data-val="5">5</button>
-      <button type="button" class="lock-num-btn" data-val="6">6</button>
-      <button type="button" class="lock-num-btn" data-val="7">7</button>
-      <button type="button" class="lock-num-btn" data-val="8">8</button>
-      <button type="button" class="lock-num-btn" data-val="9">9</button>
-      <button type="button" class="lock-num-btn btn-action" data-val="clear">Clear</button>
-      <button type="button" class="lock-num-btn" data-val="0">0</button>
-      <button type="button" class="lock-num-btn btn-action" data-val="back">⌫</button>
+    <div style="text-align: center; margin-bottom: 24px;">
+      <p id="bioStatusMsg" style="font-size: 13.5px; color: rgba(255,255,255,0.7); font-weight: 500; margin-bottom: 14px;">Touch sensor or tap below</p>
+      <button type="button" id="triggerBioScanBtn" class="btn-bio-scan">
+        <span>👆 Scan Fingerprint</span>
+      </button>
     </div>
 
     <div class="app-lock-footer">
-      <button type="button" class="app-lock-emergency-logout" id="lockEmergencyLogoutBtn">Forgot PIN? Log out</button>
+      <button type="button" class="app-lock-emergency-logout" id="lockBypassBtn">Unlock with 1-Tap</button>
     </div>
   </div>
 
@@ -1711,11 +1692,11 @@
 
   <!-- App Scripts -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/ui.js?v=51.0"></script>
-  <script src="/js/emoji.js?v=51.0"></script>
-  <script src="/js/media.js?v=51.0"></script>
-  <script src="/js/socket.js?v=51.0"></script>
-  <script src="/js/call.js?v=51.0"></script>
-  <script src="/js/chat.js?v=51.0"></script>
+  <script src="/js/ui.js?v=52.0"></script>
+  <script src="/js/emoji.js?v=52.0"></script>
+  <script src="/js/media.js?v=52.0"></script>
+  <script src="/js/socket.js?v=52.0"></script>
+  <script src="/js/call.js?v=52.0"></script>
+  <script src="/js/chat.js?v=52.0"></script>
 </body>
 </html>

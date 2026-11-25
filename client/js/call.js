@@ -226,40 +226,83 @@
     ringInterval = setInterval(beep, 3000);
   }
 
-  // Melodious WhatsApp-style incoming chime ringtone
+  // Melodious acoustic harp & marimba incoming ringtone
   function playRingtone() {
     stopAllTones();
     const ctx = getAudioContext();
     if (!ctx) return;
 
+    // Romantic acoustic harp & marimba arpeggio (E-major / C#-minor)
+    const melody = [
+      { freq: 830.61, time: 0.00 }, // G#5
+      { freq: 987.77, time: 0.15 }, // B5
+      { freq: 1318.51, time: 0.30 }, // E6
+      { freq: 1108.73, time: 0.45 }, // C#6
+      { freq: 830.61, time: 0.75 }, // G#5
+      { freq: 987.77, time: 0.90 }, // B5
+      { freq: 1318.51, time: 1.05 }, // E6
+      { freq: 1661.22, time: 1.20 }, // G#6 (high sparkling chime)
+    ];
+
     function chime() {
       try {
         const now = ctx.currentTime;
-        const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6 melody
-        notes.forEach((freq, idx) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          const startTime = now + idx * 0.16;
 
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, startTime);
+        // Vibrate phone in sync with incoming ringtone
+        if ('vibrate' in navigator) {
+          try { navigator.vibrate([350, 180, 350, 800]); } catch (_) {}
+        }
 
-          gain.gain.setValueAtTime(0.001, startTime);
-          gain.gain.linearRampToValueAtTime(0.12, startTime + 0.03);
-          gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.35);
+        melody.forEach(({ freq, time }) => {
+          const startTime = now + time;
 
-          osc.connect(gain);
-          gain.connect(ctx.destination);
+          // 1. Fundamental tone (warm sine)
+          const osc1 = ctx.createOscillator();
+          const gain1 = ctx.createGain();
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(freq, startTime);
+          gain1.gain.setValueAtTime(0.0001, startTime);
+          gain1.gain.linearRampToValueAtTime(0.18, startTime + 0.008);
+          gain1.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.75);
+          osc1.connect(gain1);
+          gain1.connect(ctx.destination);
+          osc1.start(startTime);
+          osc1.stop(startTime + 0.78);
+          activeOscillators.push(osc1);
 
-          osc.start(startTime);
-          osc.stop(startTime + 0.38);
-          activeOscillators.push(osc);
+          // 2. Harmonic overtone (octave up - wooden marimba/acoustic shimmer)
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(freq * 2, startTime);
+          gain2.gain.setValueAtTime(0.0001, startTime);
+          gain2.gain.linearRampToValueAtTime(0.05, startTime + 0.006);
+          gain2.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.35);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start(startTime);
+          osc2.stop(startTime + 0.38);
+          activeOscillators.push(osc2);
+
+          // 3. High celestial shimmer (bell overtone)
+          const osc3 = ctx.createOscillator();
+          const gain3 = ctx.createGain();
+          osc3.type = 'triangle';
+          osc3.frequency.setValueAtTime(freq * 3, startTime);
+          gain3.gain.setValueAtTime(0.0001, startTime);
+          gain3.gain.linearRampToValueAtTime(0.02, startTime + 0.004);
+          gain3.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.22);
+          osc3.connect(gain3);
+          gain3.connect(ctx.destination);
+          osc3.start(startTime);
+          osc3.stop(startTime + 0.24);
+          activeOscillators.push(osc3);
         });
       } catch (e) {}
     }
 
     chime();
-    ringInterval = setInterval(chime, 2400);
+    ringInterval = setInterval(chime, 2500);
   }
 
   // End-of-call 3 short beeps
@@ -316,6 +359,43 @@
   let isRenegotiating = false;
   let currentCallerName = '';
   let currentCallerAvatar = '';
+
+  // ─── Incoming Call System Notification (For Screen Lock & Background) ─────
+  function showIncomingCallNotification(name, type) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const isVideo = type === 'video';
+    const title = `${isVideo ? '📹 Incoming Video Call' : '📞 Incoming Audio Call'}`;
+    const options = {
+      body: `${name || 'Partner'} is calling you... ❤️`,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: 'incoming-call',
+      renotify: true,
+      requireInteraction: true,
+      vibrate: [400, 200, 400, 200, 400, 1000],
+      data: { url: '/', type: 'call' }
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.showNotification(title, options).catch(() => {});
+      }).catch(() => {});
+    } else {
+      try {
+        new Notification(title, options);
+      } catch (_) {}
+    }
+  }
+
+  function dismissIncomingCallNotification() {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.getNotifications({ tag: 'incoming-call' }).then((notifs) => {
+          notifs.forEach((n) => n.close());
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }
 
   function getCurrentUserId() {
     let u = null;
@@ -1049,6 +1129,7 @@
 
     if (incomingCallModal) showModal(incomingCallModal);
     playRingtone();
+    showIncomingCallNotification(callerName, incomingType);
 
     // Signal caller that phone is ringing
     if (window.ChatSocket) {
@@ -1069,6 +1150,7 @@
     if (callState !== 'ringing' || !incomingOfferData || isAcceptingCall) return;
     isAcceptingCall = true;
     stopAllTones();
+    dismissIncomingCallNotification();
     if (incomingCallTimeout) clearTimeout(incomingCallTimeout);
 
     try {
@@ -1674,6 +1756,7 @@
   // ─── Teardown & Reset ───────────────────────────────────────────────────────
 
   function cleanupCallState() {
+    dismissIncomingCallNotification();
     callState = 'idle';
     incomingOfferData = null;
     currentCallerId = null;
